@@ -1,0 +1,6 @@
+{
+  "name": "MargBooks Cloud ERP & Retail POS",
+  "description": "Complete GST accounting, inventory, batch/expiry control, retail touch-screen POS, multi-counter billing, and Control Room ERP platform backed by PostgreSQL.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

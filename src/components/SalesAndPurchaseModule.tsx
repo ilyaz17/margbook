@@ -1,0 +1,601 @@
+'use client';
+
+import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { FileUp, Plus, ScanBarcode } from 'lucide-react';
+import { parsePurchaseImportCsv } from '../lib/erp-engine';
+import type { PurchaseDocType, SaleDocType } from '../types/erp';
+import { useMargBooks } from './MargBooksContext';
+
+function formatInr(n: number) {
+  return `₹${n.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+export function SalesBillingModule() {
+  const { workspace, dispatchAction, setActiveModule } = useMargBooks();
+  const [docTab, setDocTab] = useState<'ALL' | SaleDocType | 'SCHEMES'>('ALL');
+
+  const filteredInvoices = useMemo(() => {
+    if (docTab === 'ALL' || docTab === 'SCHEMES') return workspace.invoices;
+    return workspace.invoices.filter((i) => i.docType === docTab);
+  }, [workspace.invoices, docTab]);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Sale, Billing & Promotions
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Wholesale GST Invoices · Estimates · Sales Orders · Delivery Challans · Credit Notes · Auto Schemes
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveModule('pos')}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+          >
+            <ScanBarcode className="h-3.5 w-3.5" />
+            <span>Retail POS (F2)</span>
+          </button>
+          <Link
+            href="/admin/sales/schemes/new"
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+          >
+            + Add Scheme
+          </Link>
+          <Link
+            href="/admin/sales/new"
+            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Sale / Credit Note</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Document Type Filter Bar */}
+      <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white p-1.5">
+        {[
+          { id: 'ALL', label: 'All Sale Docs' },
+          { id: 'GST_INVOICE', label: 'Wholesale GST' },
+          { id: 'POS_BILL', label: 'POS Bills' },
+          { id: 'ESTIMATE', label: 'Estimates / Quotes' },
+          { id: 'SALES_ORDER', label: 'Sales Orders' },
+          { id: 'CHALLAN', label: 'Delivery Challans' },
+          { id: 'CREDIT_NOTE', label: 'Credit Notes (Returns)' },
+          { id: 'SCHEMES', label: `Auto Schemes (${workspace.schemes.length})` },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setDocTab(t.id as typeof docTab)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
+              docTab === t.id
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {docTab === 'SCHEMES' ? (
+        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+                <th className="py-3 px-4">Scheme Name</th>
+                <th className="py-3 px-3">Target Item / Category</th>
+                <th className="py-3 px-3">Rule</th>
+                <th className="py-3 px-3">Validity Window</th>
+                <th className="py-3 px-4 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {workspace.schemes.map((s) => (
+                <tr key={s.id} className="hover:bg-slate-50/70">
+                  <td className="py-3 px-4 font-medium text-slate-900">{s.name}</td>
+                  <td className="py-3 px-3 font-mono text-xs text-slate-600">
+                    {s.barcodeOrCategory}
+                  </td>
+                  <td className="py-3 px-3 text-xs text-slate-700 font-mono">
+                    {s.schemeType === 'BUY_X_GET_Y'
+                      ? `Buy ${s.minQty} Get ${s.freeQty} Free`
+                      : `${s.discountPercent}% Off (Min Qty ${s.minQty})`}
+                  </td>
+                  <td className="py-3 px-3 font-mono text-xs text-slate-500">
+                    {s.validFrom} to {s.validTo}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void dispatchAction(
+                          'TOGGLE_SCHEME',
+                          { id: s.id, active: !s.active },
+                          `Scheme "${s.name}" ${!s.active ? 'enabled' : 'paused'}.`
+                        )
+                      }
+                      className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+                        s.active
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                          : 'border-slate-300 bg-slate-50 text-slate-600'
+                      }`}
+                    >
+                      {s.active ? 'Active — Pause' : 'Paused — Enable'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : (
+        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+                <th className="py-3 px-4">Invoice / Doc No</th>
+                <th className="py-3 px-3">Date · Type</th>
+                <th className="py-3 px-3">Customer / GSTIN</th>
+                <th className="py-3 px-3">Payment / Counter</th>
+                <th className="py-3 px-3 text-right">GST Tax</th>
+                <th className="py-3 px-4 text-right">Grand Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredInvoices.map((inv) => (
+                <tr key={inv.id} className="hover:bg-slate-50/70">
+                  <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-900">
+                    <Link
+                      href={`/admin/bills/${inv.id}`}
+                      className="text-teal-800 hover:underline"
+                    >
+                      {inv.invoiceNo}
+                    </Link>
+                    {inv.irn && (
+                      <div className="text-[10px] font-normal text-teal-700">IRN Verified</div>
+                    )}
+                  </td>
+                  <td className="py-3 px-3 text-xs text-slate-600 font-mono">
+                    {inv.invoiceDate} · {inv.docType.replace('_', ' ')}
+                  </td>
+                  <td className="py-3 px-3">
+                    {inv.ledgerId ? (
+                      <Link
+                        href={`/admin/ledgers/${inv.ledgerId}`}
+                        className="text-sm font-medium text-slate-900 hover:text-teal-800 hover:underline"
+                      >
+                        {inv.customerName}
+                      </Link>
+                    ) : (
+                      <div className="text-sm font-medium text-slate-900">{inv.customerName}</div>
+                    )}
+                    <div className="text-xs text-slate-500 font-mono">
+                      {inv.customerGstin || inv.customerPhone || 'B2C Retail'}
+                    </div>
+                  </td>
+                  <td className="py-3 px-3 text-xs text-slate-600">
+                    {inv.paymentModeSummary} · {inv.counterCode}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-slate-600">
+                    {formatInr(inv.cgstAmount + inv.sgstAmount + inv.igstAmount)}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-900">
+                    {formatInr(inv.grandTotal)}
+                    <div className="text-[11px] font-normal text-slate-500">{inv.status}</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </div>
+  );
+}
+
+const SAMPLE_PURCHASE_CSV = `ItemName,Barcode,HSN,Batch,Expiry,Qty,Rate,TaxPct
+India Gate Basmati Rice 5kg,8901526100105,10063020,IG26-IMP9,2027-11-30,50,495.00,5
+Amul Pasteurised Butter 500g,8901262010016,04051000,AM26-IMP2,2027-05-15,40,226.00,12`;
+
+export function PurchaseModule() {
+  const { workspace, dispatchAction } = useMargBooks();
+  const [subTab, setSubTab] = useState<'register' | 'import' | 'compare'>('register');
+  const [docTypeFilter, setDocTypeFilter] = useState<'ALL' | PurchaseDocType>('ALL');
+  const [csvText, setCsvText] = useState(SAMPLE_PURCHASE_CSV);
+  const [importSource, setImportSource] = useState<'CSV' | 'Excel' | 'PDF'>('CSV');
+  const suppliers = workspace.ledgers.filter((l) => l.groupType === 'Supplier');
+  const [selectedSupplierId, setSelectedSupplierId] = useState(
+    String(suppliers[0]?.id || 5)
+  );
+  const [supplierBillNo, setSupplierBillNo] = useState('SUP-INV-9921');
+
+  const parsedImport = useMemo(() => parsePurchaseImportCsv(csvText), [csvText]);
+
+  const filteredPurchases = useMemo(() => {
+    if (docTypeFilter === 'ALL') return workspace.purchases;
+    return workspace.purchases.filter((p) => p.docType === docTypeFilter);
+  }, [workspace.purchases, docTypeFilter]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setCsvText(reader.result);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConfirmImport = async () => {
+    if (parsedImport.lines.length === 0) return;
+    const sup = suppliers.find((s) => s.id === Number(selectedSupplierId));
+    const ok = await dispatchAction(
+      'CREATE_PURCHASE',
+      {
+        billNo: supplierBillNo.trim() || `PUR-26-${Date.now().toString().slice(-4)}`,
+        docType: 'PURCHASE_BILL',
+        ledgerId: sup?.id || null,
+        supplierName: sup?.name || 'Supplier',
+        supplierGstin: sup?.gstin || '',
+        billDate: '2026-11-26',
+        subtotal: parsedImport.subtotal,
+        taxAmount: parsedImport.taxAmount,
+        grandTotal: parsedImport.grandTotal,
+        items: parsedImport.lines,
+        importSource,
+        status: 'Posted',
+      },
+      `Imported ${parsedImport.lines.length} purchase lines (${formatInr(parsedImport.grandTotal)}) & updated stock batches.`
+    );
+    if (ok) {
+      setSubTab('register');
+    }
+  };
+
+  const handleCreateDebitNote = async () => {
+    const sup = suppliers[0];
+    await dispatchAction(
+      'CREATE_PURCHASE',
+      {
+        billNo: `DN-26-0${workspace.purchases.length + 11}`,
+        docType: 'DEBIT_NOTE',
+        ledgerId: sup?.id || null,
+        supplierName: sup?.name || 'Hindustan FMCG Supply Co.',
+        supplierGstin: sup?.gstin || '',
+        billDate: '2026-11-26',
+        subtotal: 3560,
+        taxAmount: 640.8,
+        grandTotal: 4200.8,
+        items: [
+          {
+            itemName: 'Surf Excel Matic Front Load 2kg',
+            barcode: '8901030865214',
+            hsnCode: '34022010',
+            batchNo: 'SF-MT2609',
+            expiryDate: '2028-04-30',
+            qty: 10,
+            rate: 356,
+            taxSlab: 18,
+            lineTotal: 4200.8,
+          },
+        ],
+        importSource: 'Manual',
+        status: 'Returned',
+      },
+      'Purchase Return Debit Note posted.'
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Purchase Module & Online Import
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Purchase Bills · Purchase Orders · Debit Notes · Supplier Rate Comparison · Direct CSV/Excel/PDF Import
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => void handleCreateDebitNote()}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+          >
+            + Debit Note (Return)
+          </button>
+          <Link
+            href="/admin/purchases/new"
+            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap"
+          >
+            <FileUp className="h-4 w-4" />
+            <span>New Purchase / Import</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Sub-navigation */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2.5">
+        <div className="flex items-center gap-1 rounded-md bg-slate-100 p-1">
+          {[
+            { id: 'register', label: `Purchase Register (${workspace.purchases.length})` },
+            { id: 'import', label: 'Online Purchase Import (CSV/Excel/PDF)' },
+            { id: 'compare', label: 'Supplier Rate Comparison' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setSubTab(t.id as typeof subTab)}
+              className={`rounded px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
+                subTab === t.id
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {subTab === 'register' && (
+          <select
+            aria-label="Filter purchase document type"
+            value={docTypeFilter}
+            onChange={(e) => setDocTypeFilter(e.target.value as typeof docTypeFilter)}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700"
+          >
+            <option value="ALL">All Types</option>
+            <option value="PURCHASE_BILL">Purchase Bills</option>
+            <option value="PURCHASE_ORDER">Purchase Orders</option>
+            <option value="DEBIT_NOTE">Debit Notes</option>
+          </select>
+        )}
+      </div>
+
+      {subTab === 'register' && (
+        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+                <th className="py-3 px-4">Bill / PO No</th>
+                <th className="py-3 px-3">Date · Type</th>
+                <th className="py-3 px-3">Supplier / GSTIN</th>
+                <th className="py-3 px-3">Import Channel</th>
+                <th className="py-3 px-3 text-right">Input GST ITC</th>
+                <th className="py-3 px-4 text-right">Grand Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredPurchases.map((p) => (
+                <tr key={p.id} className="hover:bg-slate-50/70">
+                  <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-900">
+                    {p.billNo}
+                  </td>
+                  <td className="py-3 px-3 font-mono text-xs text-slate-600">
+                    {p.billDate} · {p.docType.replace('_', ' ')}
+                  </td>
+                  <td className="py-3 px-3">
+                    {p.ledgerId ? (
+                      <Link
+                        href={`/admin/ledgers/${p.ledgerId}`}
+                        className="text-sm font-medium text-slate-900 hover:text-teal-800 hover:underline"
+                      >
+                        {p.supplierName}
+                      </Link>
+                    ) : (
+                      <div className="text-sm font-medium text-slate-900">{p.supplierName}</div>
+                    )}
+                    <div className="text-xs font-mono text-slate-500">{p.supplierGstin}</div>
+                  </td>
+                  <td className="py-3 px-3 text-xs text-slate-600">
+                    {p.importSource} · {p.items.length} line(s)
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-teal-800">
+                    {formatInr(p.taxAmount)}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-900">
+                    {formatInr(p.grandTotal)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {subTab === 'import' && (
+        <section className="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label htmlFor="imp-supplier" className="block text-xs font-medium text-slate-700 mb-1">
+                Supplier Party
+              </label>
+              <select
+                id="imp-supplier"
+                value={selectedSupplierId}
+                onChange={(e) => setSelectedSupplierId(e.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              >
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="imp-billno" className="block text-xs font-medium text-slate-700 mb-1">
+                Supplier Invoice No
+              </label>
+              <input
+                id="imp-billno"
+                value={supplierBillNo}
+                onChange={(e) => setSupplierBillNo(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-mono"
+              />
+            </div>
+            <div>
+              <label htmlFor="imp-source" className="block text-xs font-medium text-slate-700 mb-1">
+                Source Format
+              </label>
+              <select
+                id="imp-source"
+                value={importSource}
+                onChange={(e) => setImportSource(e.target.value as 'CSV' | 'Excel' | 'PDF')}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              >
+                <option value="CSV">CSV Supplier Invoice</option>
+                <option value="Excel">Excel (.xlsx/.csv) Sheet</option>
+                <option value="PDF">PDF Invoice OCR Extract</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="imp-file" className="block text-xs font-medium text-slate-700 mb-1">
+                Upload .csv File (Optional)
+              </label>
+              <input
+                id="imp-file"
+                type="file"
+                accept=".csv,.txt"
+                onChange={handleFileUpload}
+                className="w-full text-xs text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2.5 file:py-1.5 file:text-xs file:font-medium"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="imp-csv-text" className="block text-xs font-medium text-slate-700 mb-1">
+              Invoice Lines (ItemName, Barcode, HSN, Batch, Expiry, Qty, Rate, TaxPct)
+            </label>
+            <textarea
+              id="imp-csv-text"
+              rows={4}
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+              className="w-full rounded-md border border-slate-300 bg-slate-50 p-3 font-mono text-xs text-slate-900 focus:border-teal-600 focus:bg-white focus:outline-none"
+            />
+          </div>
+
+          {parsedImport.errors.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              {parsedImport.errors.map((err, i) => (
+                <div key={i}>{err}</div>
+              ))}
+            </div>
+          )}
+
+          {parsedImport.lines.length > 0 && (
+            <div className="space-y-3">
+              <div className="overflow-x-auto rounded border border-slate-200">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+                      <th className="py-2 px-3">Item</th>
+                      <th className="py-2 px-2">Batch · Expiry</th>
+                      <th className="py-2 px-2 text-right">Qty</th>
+                      <th className="py-2 px-2 text-right">Rate</th>
+                      <th className="py-2 px-2 text-right">GST %</th>
+                      <th className="py-2 px-3 text-right">Line Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {parsedImport.lines.map((ln, idx) => (
+                      <tr key={idx}>
+                        <td className="py-2 px-3 font-medium text-slate-900">{ln.itemName}</td>
+                        <td className="py-2 px-2 font-mono text-slate-600">
+                          {ln.batchNo} · {ln.expiryDate}
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono tabular-nums">{ln.qty}</td>
+                        <td className="py-2 px-2 text-right font-mono tabular-nums">
+                          ₹{ln.rate.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono tabular-nums">
+                          {ln.taxSlab}%
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono font-semibold tabular-nums">
+                          {formatInr(ln.lineTotal)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs font-mono text-slate-700 tabular-nums">
+                  Taxable {formatInr(parsedImport.subtotal)} · Input GST{' '}
+                  {formatInr(parsedImport.taxAmount)} · Net Payable{' '}
+                  <strong className="text-slate-900">
+                    {formatInr(parsedImport.grandTotal)}
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmImport()}
+                  className="rounded-md bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800"
+                >
+                  Confirm & Post Purchase Import
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {subTab === 'compare' && (
+        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+                <th className="py-3 px-4">Product SKU</th>
+                <th className="py-3 px-3 text-right">Metro Wholesale Rate</th>
+                <th className="py-3 px-3 text-right">Hindustan FMCG Rate</th>
+                <th className="py-3 px-3 text-right">Current Margin</th>
+                <th className="py-3 px-4 text-right">Best Margin Supplier</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {workspace.items.slice(0, 8).map((it, idx) => {
+                const altRate = Number((it.purchaseRate * (idx % 2 === 0 ? 1.03 : 0.97)).toFixed(2));
+                const bestName =
+                  it.purchaseRate <= altRate
+                    ? 'Metro Cash & Carry Wholesale'
+                    : 'Hindustan FMCG Supply Co.';
+                const bestRate = Math.min(it.purchaseRate, altRate);
+                const marginPct = (((it.saleRate - bestRate) / it.saleRate) * 100).toFixed(1);
+                return (
+                  <tr key={it.id} className="hover:bg-slate-50/70">
+                    <td className="py-3 px-4 font-medium text-slate-900">{it.name}</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs tabular-nums">
+                      ₹{it.purchaseRate.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-xs tabular-nums">
+                      ₹{altRate.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-semibold text-emerald-700 tabular-nums">
+                      {marginPct}%
+                    </td>
+                    <td className="py-3 px-4 text-right text-xs font-medium text-slate-800">
+                      {bestName}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </div>
+  );
+}
