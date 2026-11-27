@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowRight,
+  Barcode,
   BarChart3,
   FileCheck2,
+  Monitor,
   ReceiptIndianRupee,
   ScanBarcode,
   Settings2,
@@ -31,7 +34,7 @@ function formatInr(value: number): string {
 }
 
 export function DashboardModule() {
-  const { workspace, financials, setActiveModule } = useMargBooks();
+  const { workspace, financials, setActiveModule, theme } = useMargBooks();
   const activeCompany =
     workspace.companies.find((c) => c.id === workspace.activeCompanyId) ||
     workspace.companies[0];
@@ -107,8 +110,9 @@ export function DashboardModule() {
         card: acc.card + c.cardSales,
         wallet: acc.wallet + c.walletSales,
         pdc: acc.pdc + c.pdcSales,
+        credit: acc.credit + (c.creditSales || 0),
       }),
-      { openingCash: 0, cash: 0, upi: 0, card: 0, wallet: 0, pdc: 0 }
+      { openingCash: 0, cash: 0, upi: 0, card: 0, wallet: 0, pdc: 0, credit: 0 }
     );
   }, [workspace.posCounters]);
 
@@ -116,7 +120,7 @@ export function DashboardModule() {
     {
       label: 'Total Sales (Net GST)',
       value: formatInr(financials.totalSales),
-      sub: `${workspace.invoices.filter((i) => i.docType === 'POS_BILL' || i.docType === 'GST_INVOICE').length} posted invoices`,
+      sub: `${workspace.invoices.filter((i) => i.docType === 'POS_BILL' || i.docType === 'GST_INVOICE').length} posted bills`,
       action: () => setActiveModule('sales'),
     },
     {
@@ -126,106 +130,116 @@ export function DashboardModule() {
       action: () => setActiveModule('purchases'),
     },
     {
-      label: 'Receivables (Debtors)',
+      label: 'Receivables (Udhaar & B2B)',
       value: formatInr(financials.totalReceivables),
       sub: `${workspace.ledgers.filter((l) => l.groupType === 'Customer' && l.currentBalance > 0).length} active accounts`,
-      action: () => setActiveModule('accounting'),
+      action: () => setActiveModule('masters'),
     },
     {
-      label: 'Payables (Creditors)',
+      label: 'Payables (Suppliers)',
       value: formatInr(financials.totalPayables),
-      sub: `${workspace.ledgers.filter((l) => l.groupType === 'Supplier' && l.currentBalance > 0).length} supplier ledgers`,
+      sub: `${workspace.ledgers.filter((l) => l.groupType === 'Supplier' && l.currentBalance > 0).length} distributor ledgers`,
       action: () => setActiveModule('accounting'),
     },
     {
       label: 'Cash & Bank Balance',
       value: formatInr(financials.cashBankBalance),
-      sub: 'HDFC Current + Vault Cash',
+      sub: 'HDFC Current + Store Vault',
       action: () => setActiveModule('banking'),
     },
     {
-      label: 'Operating Expenses',
-      value: formatInr(financials.totalExpenses),
-      sub: `Stock Value ${formatInr(financials.closingStockValue)}`,
-      action: () => setActiveModule('reports'),
+      label: 'Closing Stock Value',
+      value: formatInr(financials.closingStockValue),
+      sub: `Operating Exp ${formatInr(financials.totalExpenses)}`,
+      action: () => setActiveModule('inventory'),
     },
   ];
 
   const shortcuts = [
     {
       key: 'F2',
-      label: 'Retail POS Terminal',
-      desc: 'Touch billing, barcode & split pay',
+      label: 'Supermarket POS Terminal',
+      desc: 'Camera/USB barcode, loose kg & UPI QR',
       icon: ScanBarcode,
       target: 'pos' as const,
       primary: true,
     },
     {
+      key: 'Alt+B',
+      label: 'Barcode & Shelf Label Studio',
+      desc: '38×25mm thermal, shelf MRP & A4 sheets',
+      icon: Barcode,
+      target: 'barcodes' as const,
+      primary: false,
+    },
+    {
       key: 'F8',
-      label: 'Wholesale GST Bill',
-      desc: 'B2B invoices, quotes & credit notes',
+      label: 'Sale Register & Credit Notes',
+      desc: 'Invoices, estimates & customer returns',
       icon: ReceiptIndianRupee,
       target: 'sales' as const,
       primary: false,
     },
     {
       key: 'F9',
-      label: 'Purchase Import',
-      desc: 'CSV/Excel supplier bill import',
+      label: 'Purchase & CSV Import',
+      desc: 'Supplier bills, POs & rate comparison',
       icon: Truck,
       target: 'purchases' as const,
       primary: false,
     },
     {
       key: 'GST',
-      label: 'E-Invoice & GSTR-1',
-      desc: 'IRN QR, E-Way Bill & JSON export',
+      label: 'E-Invoice & GSTR-1 JSON',
+      desc: 'IRN QR, E-Way Bill & GST returns',
       icon: FileCheck2,
       target: 'gst' as const,
       primary: false,
     },
     {
-      key: 'P&L',
-      label: 'Financial Reports',
-      desc: 'Trial Balance, P&L & Balance Sheet',
-      icon: BarChart3,
-      target: 'reports' as const,
-      primary: false,
-    },
-    {
       key: 'Alt+C',
-      label: 'Control Room',
-      desc: 'POS rules, counters & books rebuild',
+      label: 'Control Room & Promo Coupons',
+      desc: 'UPI VPA, weighted prefix & coupon codes',
       icon: Settings2,
       target: 'control-room' as const,
       primary: false,
     },
   ];
 
+  const isDark = theme === 'dark';
+
   return (
     <div className="space-y-6">
       {/* Executive Header Strip */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Executive Overview
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            Supermarket Executive Overview
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             {activeCompany?.name} · GSTIN {activeCompany?.gstin} · FY {activeCompany?.financialYear}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 sm:shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveModule('shifts')}
-            className="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+          <Link
+            href="/admin/pos/customer-display"
+            target="_blank"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap"
           >
-            Day-End Cash Summary
-          </button>
+            <Monitor className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Customer Display</span>
+          </Link>
+          <Link
+            href="/admin/barcodes"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap"
+          >
+            <Barcode className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+            <span>Barcode Studio</span>
+          </Link>
           <button
             type="button"
             onClick={() => setActiveModule('pos')}
-            className="inline-flex items-center gap-2 rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 px-4 py-2 text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
           >
             <ScanBarcode className="h-4 w-4" />
             <span>Open Retail POS (F2)</span>
@@ -234,22 +248,27 @@ export function DashboardModule() {
       </div>
 
       {/* 6-KPI Real-Time Financial Strip */}
-      <section aria-label="Key Financial Metrics" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+      <section
+        aria-label="Key Financial Metrics"
+        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
+      >
         {kpis.map((kpi) => (
           <button
             key={kpi.label}
             type="button"
             onClick={kpi.action}
-            className="text-left rounded-lg border border-slate-200 bg-white p-4 hover:border-teal-600/50 transition-colors focus-visible:outline-2 focus-visible:outline-teal-600"
+            className="text-left rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 hover:border-emerald-600/60 transition-colors cursor-pointer"
           >
-            <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+            <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
               <span>{kpi.label}</span>
               <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
             </div>
-            <div className="mt-2 font-mono text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">
+            <div className="mt-2 font-mono text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
               {kpi.value}
             </div>
-            <div className="mt-1 text-xs text-slate-500 tabular-nums">{kpi.sub}</div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+              {kpi.sub}
+            </div>
           </button>
         ))}
       </section>
@@ -257,27 +276,27 @@ export function DashboardModule() {
       {/* Main Analytics + Quick Shortcuts Row */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Sales vs Purchase & Expense Trend Chart */}
-        <section className="xl:col-span-8 rounded-lg border border-slate-200 bg-white p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100">
+        <section className="xl:col-span-8 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100 dark:border-slate-800">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">
-                Sales, Purchases & Expense Trends
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Supermarket Sales, Purchases &amp; Expense Trends
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Daily movement in INR · Rolling 6-day ledger view
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Daily store movement in INR · Rolling 6-day ledger view
               </p>
             </div>
-            <div className="flex items-center gap-4 text-xs text-slate-600">
+            <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300">
               <span className="inline-flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-xs bg-teal-700" aria-hidden="true" />
+                <span className="inline-block h-2.5 w-2.5 rounded-xs bg-emerald-600" aria-hidden="true" />
                 Sales
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-xs bg-slate-700" aria-hidden="true" />
+                <span className="inline-block h-2.5 w-2.5 rounded-xs bg-slate-600 dark:bg-slate-400" aria-hidden="true" />
                 Purchases
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-xs bg-amber-600" aria-hidden="true" />
+                <span className="inline-block h-2.5 w-2.5 rounded-xs bg-amber-500" aria-hidden="true" />
                 Expenses
               </span>
             </div>
@@ -285,15 +304,19 @@ export function DashboardModule() {
           <div className="mt-4 h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={isDark ? '#1F2937' : '#E2E8F0'}
+                  vertical={false}
+                />
                 <XAxis
                   dataKey="day"
-                  tick={{ fontSize: 12, fill: '#64748B' }}
-                  axisLine={{ stroke: '#E2E8F0' }}
+                  tick={{ fontSize: 12, fill: isDark ? '#94A3B8' : '#64748B' }}
+                  axisLine={{ stroke: isDark ? '#1F2937' : '#E2E8F0' }}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 12, fill: '#64748B' }}
+                  tick={{ fontSize: 12, fill: isDark ? '#94A3B8' : '#64748B' }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={(v) => `₹${Math.round(Number(v) / 1000)}k`}
@@ -302,12 +325,19 @@ export function DashboardModule() {
                   formatter={(val: unknown) => formatInr(Number(val || 0))}
                   contentStyle={{
                     borderRadius: '8px',
-                    border: '1px solid #E2E8F0',
+                    border: isDark ? '1px solid #1F2937' : '1px solid #E2E8F0',
+                    backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+                    color: isDark ? '#F8FAFC' : '#0F172A',
                     fontSize: '12px',
                   }}
                 />
-                <Bar dataKey="sales" name="Sales" fill="#0F766E" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="purchases" name="Purchases" fill="#334155" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sales" name="Sales" fill="#059669" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="purchases"
+                  name="Purchases"
+                  fill={isDark ? '#64748B' : '#334155'}
+                  radius={[4, 4, 0, 0]}
+                />
                 <Bar dataKey="expenses" name="Expenses" fill="#D97706" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -315,16 +345,19 @@ export function DashboardModule() {
         </section>
 
         {/* Quick-Action Shortcut Keys */}
-        <section className="xl:col-span-4 rounded-lg border border-slate-200 bg-white p-5">
-          <div className="pb-3 border-b border-slate-100">
-            <h2 className="text-base font-semibold text-slate-900">
-              Quick-Action Shortcuts
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Press MargBooks function keys or click directly
-            </p>
+        <section className="xl:col-span-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+          <div className="pb-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Quick-Action Shortcuts
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Press keyboard shortcuts or launch directly
+              </p>
+            </div>
+            <BarChart3 className="h-4 w-4 text-slate-400" />
           </div>
-          <div className="mt-3 divide-y divide-slate-100">
+          <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
             {shortcuts.map((s) => {
               const Icon = s.icon;
               return (
@@ -332,22 +365,26 @@ export function DashboardModule() {
                   key={s.label}
                   type="button"
                   onClick={() => setActiveModule(s.target)}
-                  className="w-full flex items-center justify-between gap-3 py-2.5 text-left hover:bg-slate-50 -mx-2 px-2 rounded-md transition-colors"
+                  className="w-full flex items-center justify-between gap-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 -mx-2 px-2 rounded-md transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <Icon
                       className={`h-4 w-4 shrink-0 ${
-                        s.primary ? 'text-teal-700' : 'text-slate-500'
+                        s.primary
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-slate-500 dark:text-slate-400'
                       }`}
                     />
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-slate-900 truncate">
+                      <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
                         {s.label}
                       </div>
-                      <div className="text-xs text-slate-500 truncate">{s.desc}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                        {s.desc}
+                      </div>
                     </div>
                   </div>
-                  <span className="font-mono text-xs font-medium text-slate-500 shrink-0">
+                  <span className="font-mono text-xs font-medium text-slate-500 dark:text-slate-400 shrink-0">
                     {s.key}
                   </span>
                 </button>
@@ -357,55 +394,57 @@ export function DashboardModule() {
         </section>
       </div>
 
-      {/* Bottom Split: Day-End Multi-Counter Cash Summary + Expiry & Reorder Alerts */}
+      {/* Bottom Split: Multi-Lane Cashier Status + Expiry & Auto-Reorder Action Center */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        <section className="xl:col-span-6 rounded-lg border border-slate-200 bg-white p-5">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <section className="xl:col-span-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">
-                Multi-Counter Day-End Cash Summary
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Multi-Lane Day-End Cash &amp; UPI Summary
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Live register collection across {workspace.posCounters.length} counters
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Live register collection across {workspace.posCounters.length} checkout lanes
               </p>
             </div>
             <button
               type="button"
               onClick={() => setActiveModule('shifts')}
-              className="text-xs font-medium text-teal-700 hover:underline whitespace-nowrap shrink-0"
+              className="text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Shift Handover & Counters
+              Shift Handover
             </button>
           </div>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
-                  <th className="pb-2 pr-3">Counter / Operator</th>
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <th className="pb-2 pr-3">Lane / Cashier</th>
                   <th className="pb-2 px-2 text-right">Cash</th>
                   <th className="pb-2 px-2 text-right">UPI / Card</th>
-                  <th className="pb-2 pl-2 text-right">Drawer Total</th>
+                  <th className="pb-2 pl-2 text-right">Drawer Cash</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {workspace.posCounters.map((c) => {
                   const drawerTotal = c.openingCash + c.cashSales;
                   const digital = c.upiSales + c.cardSales + c.walletSales;
                   return (
-                    <tr key={c.id} className="hover:bg-slate-50/70">
+                    <tr key={c.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                       <td className="py-2.5 pr-3">
-                        <div className="font-medium text-slate-900">{c.counterCode}</div>
-                        <div className="text-xs text-slate-500">
+                        <div className="font-medium text-slate-900 dark:text-slate-100">
+                          {c.counterCode}
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
                           {c.operatorName} · {c.status}
                         </div>
                       </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700">
+                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">
                         {formatInr(c.cashSales)}
                       </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700">
+                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">
                         {formatInr(digital)}
                       </td>
-                      <td className="py-2.5 pl-2 text-right font-mono font-semibold tabular-nums text-slate-900">
+                      <td className="py-2.5 pl-2 text-right font-mono font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                         {formatInr(drawerTotal)}
                       </td>
                     </tr>
@@ -413,15 +452,15 @@ export function DashboardModule() {
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t border-slate-200 font-semibold text-slate-900">
-                  <td className="pt-2.5 pr-3 text-xs">All Counters Combined</td>
+                <tr className="border-t border-slate-200 dark:border-slate-800 font-semibold text-slate-900 dark:text-slate-100">
+                  <td className="pt-2.5 pr-3 text-xs">All Lanes Combined</td>
                   <td className="pt-2.5 px-2 text-right font-mono tabular-nums text-xs">
                     {formatInr(counterTotals.cash)}
                   </td>
                   <td className="pt-2.5 px-2 text-right font-mono tabular-nums text-xs">
                     {formatInr(counterTotals.upi + counterTotals.card + counterTotals.wallet)}
                   </td>
-                  <td className="pt-2.5 pl-2 text-right font-mono tabular-nums text-xs text-teal-800">
+                  <td className="pt-2.5 pl-2 text-right font-mono tabular-nums text-xs text-emerald-700 dark:text-emerald-400">
                     {formatInr(counterTotals.openingCash + counterTotals.cash)}
                   </td>
                 </tr>
@@ -430,51 +469,66 @@ export function DashboardModule() {
           </div>
         </section>
 
-        {/* Expiry & Auto-Reorder Alerts */}
-        <section className="xl:col-span-6 rounded-lg border border-slate-200 bg-white p-5">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        {/* Near-Expiry & Auto-Reorder Action Center */}
+        <section className="xl:col-span-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <div>
-                <h2 className="text-base font-semibold text-slate-900">
-                  Batch Expiry & Auto-Reorder Alerts
+                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  Near-Expiry &amp; Auto-Reorder Action Center
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {expiryAlerts.length} expiry batches · {lowStockItems.length} below reorder level
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {expiryAlerts.length} perishable lots · {lowStockItems.length} SKUs below reorder
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setActiveModule('inventory')}
-              className="text-xs font-medium text-teal-700 hover:underline whitespace-nowrap shrink-0"
-            >
-              Open Stock Control
-            </button>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/admin/purchases/new"
+                className="text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline whitespace-nowrap"
+              >
+                Create Auto-PO
+              </Link>
+              <Link
+                href="/admin/inventory"
+                className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:underline whitespace-nowrap"
+              >
+                Stock Control
+              </Link>
+            </div>
           </div>
-          <div className="mt-3 divide-y divide-slate-100">
+          <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
             {expiryAlerts.slice(0, 4).map((b) => (
               <div key={b.id} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-slate-900 truncate">
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
                     {b.itemName}
                   </div>
-                  <div className="text-xs text-slate-500 font-mono tabular-nums">
-                    Batch {b.batchNo} · {b.godownName} · Exp {b.expiryDate}
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+                    Lot {b.batchNo} · {b.godownName} · Exp {b.expiryDate}
                   </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <div
-                    className={`text-xs font-semibold ${
-                      b.status === 'EXPIRED' ? 'text-red-700' : 'text-amber-700'
-                    }`}
+                <div className="flex items-center gap-3 shrink-0">
+                  <Link
+                    href={`/admin/barcodes?itemId=${b.itemId}`}
+                    className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 hover:underline"
                   >
-                    {b.status === 'EXPIRED'
-                      ? 'Expired — Dump'
-                      : `${b.daysRemaining}d left`}
-                  </div>
-                  <div className="text-xs font-mono text-slate-500 tabular-nums">
-                    {b.qtyOnHand} units
+                    Print Offer Tag
+                  </Link>
+                  <div className="text-right">
+                    <div
+                      className={`text-xs font-semibold ${
+                        b.status === 'EXPIRED'
+                          ? 'text-red-700 dark:text-red-400'
+                          : 'text-amber-700 dark:text-amber-400'
+                      }`}
+                    >
+                      {b.status === 'EXPIRED' ? 'Expired' : `${b.daysRemaining}d left`}
+                    </div>
+                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400 tabular-nums">
+                      {b.qtyOnHand} units
+                    </div>
                   </div>
                 </div>
               </div>
@@ -482,16 +536,18 @@ export function DashboardModule() {
             {lowStockItems.slice(0, 2).map((item) => (
               <div key={item.id} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-slate-900 truncate">
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
                     {item.name}
                   </div>
-                  <div className="text-xs text-slate-500 font-mono tabular-nums">
-                    SKU {item.sku} · Rack {item.rackLocation} · Reorder at {item.reorderLevel}
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+                    SKU {item.sku} · {item.rackLocation} · Reorder at {item.reorderLevel}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-xs font-semibold text-amber-700">Low Stock</div>
-                  <div className="text-xs font-mono text-slate-600 tabular-nums">
+                  <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                    Low Stock
+                  </div>
+                  <div className="text-xs font-mono text-slate-600 dark:text-slate-300 tabular-nums">
                     {item.totalQty} {item.uqc}
                   </div>
                 </div>

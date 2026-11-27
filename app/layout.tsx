@@ -51,7 +51,7 @@ export default function RootLayout({
     >
       <body
         suppressHydrationWarning
-        className="font-sans bg-slate-50 text-slate-900 antialiased selection:bg-teal-100 selection:text-teal-900"
+        className="font-sans bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 antialiased selection:bg-emerald-100 dark:selection:bg-emerald-900/50 selection:text-emerald-900 dark:selection:text-emerald-100 transition-colors"
       >
         <MargBooksProvider>{children}</MargBooksProvider>
       </body>

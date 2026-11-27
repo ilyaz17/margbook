@@ -5,6 +5,7 @@ import type {
   ItemBatch,
   Ledger,
   PaymentSplit,
+  PromoCoupon,
   PurchaseLineItem,
   PurchaseRecord,
   Scheme,
@@ -20,13 +21,38 @@ export function round3(n: number): number {
 }
 
 /**
- * Parses fast supermarket scanner input supporting optional quantity multipliers:
- * e.g., "3*8901262010016" -> { qty: 3, query: "8901262010016" }
- * e.g., "0.5*VEG-TOM" -> { qty: 0.5, query: "VEG-TOM" }
+ * Parses fast supermarket scanner input supporting:
+ * 1) Weighted EAN-13 produce/deli stickers (e.g., "210101012500" / "2101010125007"):
+ *    [2-digit prefix][4-digit PLU suffix][5-digit grams][optional check digit]
+ * 2) Quantity multiplier input (e.g., "3*8901262010016", "0.5*200101")
+ * 3) Plain EAN-13 / PLU / SKU / item name lookup
  */
-export function parseBarcodeOrPluInput(raw: string): { qty: number; query: string } {
+export function parseBarcodeOrPluInput(
+  raw: string,
+  weightedPrefix = '21'
+): { qty: number; query: string; isWeightedBarcode?: boolean; pluSuffix?: string } {
   const trimmed = raw.trim();
   if (!trimmed) return { qty: 1, query: '' };
+
+  const prefix = (weightedPrefix || '21').trim();
+  if (
+    prefix.length === 2 &&
+    /^\d{12,13}$/.test(trimmed) &&
+    trimmed.startsWith(prefix)
+  ) {
+    const pluSuffix = trimmed.slice(2, 6);
+    const grams = Number(trimmed.slice(6, 11));
+    if (Number.isFinite(grams) && grams > 0) {
+      const kg = round3(grams / 1000);
+      return {
+        qty: kg,
+        query: `20${pluSuffix}`,
+        isWeightedBarcode: true,
+        pluSuffix,
+      };
+    }
+  }
+
   const starIdx = trimmed.indexOf('*');
   if (starIdx > 0 && starIdx < trimmed.length - 1) {
     const qtyCandidate = Number(trimmed.slice(0, starIdx).trim());
@@ -36,6 +62,94 @@ export function parseBarcodeOrPluInput(raw: string): { qty: number; query: strin
     }
   }
   return { qty: 1, query: trimmed };
+}
+
+export interface EvaluatedCouponResult {
+  valid: boolean;
+  coupon?: PromoCoupon;
+  discountAmount: number;
+  error?: string;
+}
+
+export function evaluatePromoCoupon(params: {
+  code: string;
+  coupons: PromoCoupon[];
+  billTotalBeforeCoupon: number;
+  asOfDate: string;
+}): EvaluatedCouponResult {
+  const cleanCode = params.code.trim().toUpperCase();
+  if (!cleanCode) {
+    return { valid: false, discountAmount: 0, error: 'Enter a coupon code.' };
+  }
+  const match = params.coupons.find(
+    (c) => c.code.trim().toUpperCase() === cleanCode && c.active
+  );
+  if (!match) {
+    return { valid: false, discountAmount: 0, error: `Coupon "${cleanCode}" is invalid or inactive.` };
+  }
+  if (match.validTill && params.asOfDate > match.validTill) {
+    return { valid: false, discountAmount: 0, error: `Coupon "${cleanCode}" expired on ${match.validTill}.` };
+  }
+  if (params.billTotalBeforeCoupon < match.minBillAmount) {
+    return {
+      valid: false,
+      discountAmount: 0,
+      error: `Minimum bill ₹${match.minBillAmount.toLocaleString('en-IN')} required for ${cleanCode}.`,
+    };
+  }
+
+  const rawDiscount =
+    match.discountType === 'PERCENT'
+      ? round2((params.billTotalBeforeCoupon * match.discountValue) / 100)
+      : round2(match.discountValue);
+  const capped = round2(
+    Math.min(
+      rawDiscount,
+      match.maxDiscount > 0 ? match.maxDiscount : rawDiscount,
+      params.billTotalBeforeCoupon
+    )
+  );
+  return { valid: true, coupon: match, discountAmount: Math.max(0, capped) };
+}
+
+export function validateUdhaarLimit(params: {
+  customer?: Pick<Ledger, 'name' | 'currentBalance' | 'balanceType' | 'creditLimit'>;
+  creditAmount: number;
+}): { allowed: boolean; currentDue: number; availableLimit: number; error?: string } {
+  const creditAmount = round2(Math.max(0, params.creditAmount));
+  if (creditAmount <= 0) {
+    return { allowed: true, currentDue: 0, availableLimit: params.customer?.creditLimit || 0 };
+  }
+  if (!params.customer) {
+    return {
+      allowed: false,
+      currentDue: 0,
+      availableLimit: 0,
+      error: 'Select a registered customer account for Credit (Udhaar) billing.',
+    };
+  }
+  const currentDue =
+    params.customer.balanceType === 'Dr' ? round2(params.customer.currentBalance) : 0;
+  const limit = round2(Math.max(0, params.customer.creditLimit || 0));
+  const availableLimit = round2(Math.max(0, limit - currentDue));
+
+  if (limit <= 0) {
+    return {
+      allowed: false,
+      currentDue,
+      availableLimit: 0,
+      error: `${params.customer.name} does not have a Credit (Udhaar) limit enabled.`,
+    };
+  }
+  if (creditAmount > availableLimit + 0.01) {
+    return {
+      allowed: false,
+      currentDue,
+      availableLimit,
+      error: `Udhaar ₹${creditAmount.toFixed(2)} exceeds ${params.customer.name}'s available limit of ₹${availableLimit.toFixed(2)}.`,
+    };
+  }
+  return { allowed: true, currentDue, availableLimit };
 }
 
 export interface EvaluatedScheme {
@@ -103,6 +217,8 @@ export interface CalculatedBill {
   lines: InvoiceLineItem[];
   subtotal: number;
   discountAmount: number;
+  couponCode: string;
+  couponDiscountAmount: number;
   loyaltyDiscountAmount: number;
   taxableTotal: number;
   cgstAmount: number;
@@ -127,6 +243,7 @@ export function calculateInvoiceTotals(params: {
   loyaltyPointValue: number;
   loyaltyEarnPer100: number;
   enableLoyaltyPoints: boolean;
+  promoCoupon?: PromoCoupon | null;
 }): CalculatedBill {
   const {
     cartLines,
@@ -139,6 +256,7 @@ export function calculateInvoiceTotals(params: {
     loyaltyPointValue,
     loyaltyEarnPer100,
     enableLoyaltyPoints,
+    promoCoupon,
   } = params;
 
   let subtotal = 0;
@@ -206,22 +324,36 @@ export function calculateInvoiceTotals(params: {
   const igstAmount = isInterState ? round2(totalTax) : 0;
 
   const preLoyaltyTotal = round2(taxableTotal + totalTax);
+  const couponEval = promoCoupon
+    ? evaluatePromoCoupon({
+        code: promoCoupon.code,
+        coupons: [promoCoupon],
+        billTotalBeforeCoupon: preLoyaltyTotal,
+        asOfDate,
+      })
+    : { valid: false, discountAmount: 0 };
+  const couponCode = couponEval.valid && promoCoupon ? promoCoupon.code.toUpperCase() : '';
+  const couponDiscountAmount = couponEval.valid ? couponEval.discountAmount : 0;
+
+  const afterCouponTotal = Math.max(0, round2(preLoyaltyTotal - couponDiscountAmount));
   const safeRedeemPoints = enableLoyaltyPoints
     ? Math.max(
         0,
         Math.min(
           Math.floor(redeemPoints),
           Math.floor(availableCustomerPoints),
-          Math.floor(preLoyaltyTotal / Math.max(0.01, loyaltyPointValue))
+          Math.floor(afterCouponTotal / Math.max(0.01, loyaltyPointValue))
         )
       )
     : 0;
   const loyaltyDiscountAmount = round2(safeRedeemPoints * loyaltyPointValue);
 
-  const netBeforeRound = Math.max(0, round2(preLoyaltyTotal - loyaltyDiscountAmount));
+  const netBeforeRound = Math.max(0, round2(afterCouponTotal - loyaltyDiscountAmount));
   const grandTotal = Math.round(netBeforeRound);
   const roundOff = round2(grandTotal - netBeforeRound);
-  const totalMrpSavings = round2(lineMrpSavingsSum + loyaltyDiscountAmount);
+  const totalMrpSavings = round2(
+    lineMrpSavingsSum + couponDiscountAmount + loyaltyDiscountAmount
+  );
 
   const loyaltyEarned =
     enableLoyaltyPoints && grandTotal > 0
@@ -231,7 +363,9 @@ export function calculateInvoiceTotals(params: {
   return {
     lines,
     subtotal,
-    discountAmount: round2(totalDiscount + loyaltyDiscountAmount),
+    discountAmount: round2(totalDiscount + couponDiscountAmount + loyaltyDiscountAmount),
+    couponCode,
+    couponDiscountAmount,
     loyaltyDiscountAmount,
     taxableTotal,
     cgstAmount,
@@ -743,6 +877,8 @@ export function buildGlobalSearchResults(
     { id: 'mod-sales', category: 'Module', title: 'Sale & Billing Register', subtitle: 'GST invoices, estimates, challans & schemes', meta: 'F8', href: '/admin/sales' },
     { id: 'mod-purchases', category: 'Module', title: 'Purchase & CSV Import', subtitle: 'Purchase bills, orders, debit notes & rate compare', meta: 'F9', href: '/admin/purchases' },
     { id: 'mod-inventory', category: 'Module', title: 'Stock & Inventory', subtitle: 'Multi-godown batches, expiry alerts & transfers', meta: 'Stock', href: '/admin/inventory' },
+    { id: 'mod-barcodes', category: 'Module', title: 'Barcode & Shelf Label Studio', subtitle: 'Print 38x25mm thermal stickers, shelf MRP tags & A4 24-up sheets', meta: 'Alt+B', href: '/admin/barcodes' },
+    { id: 'mod-display', category: 'Module', title: 'Customer Live Display & UPI QR', subtitle: 'Second-screen basket tape, savings highlight & dynamic UPI QR', meta: 'Display', href: '/admin/pos/customer-display' },
     { id: 'mod-accounting', category: 'Module', title: 'Accounting Vouchers', subtitle: 'Receipt, payment, contra, journal & reminders', meta: 'F6', href: '/admin/accounting' },
     { id: 'mod-banking', category: 'Module', title: 'Banking & PDC Reconciliation', subtitle: 'Connected bank feeds, PDC tracker & BRS', meta: 'Banking', href: '/admin/banking' },
     { id: 'mod-gst', category: 'Module', title: 'GST & E-Invoice Compliance', subtitle: 'IRN, E-Way Bill, GSTR-1 JSON & GSTR-2B/3B', meta: 'GST', href: '/admin/gst' },

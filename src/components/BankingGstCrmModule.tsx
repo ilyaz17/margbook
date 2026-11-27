@@ -30,10 +30,10 @@ export function BankingModule() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           Banking, PDC & Statement Reconciliation
         </h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Connected Bank Accounts · Post-Dated Cheque (PDC) Register · Automated Bank Reconciliation
         </p>
       </div>
@@ -43,47 +43,47 @@ export function BankingModule() {
         {bankLedgers.map((acct) => (
           <div
             key={acct.id}
-            className="rounded-lg border border-slate-200 bg-white p-4"
+            className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4"
           >
-            <div className="text-xs font-medium text-slate-500">
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
               {acct.groupType === 'Bank' ? 'Connected Bank Account' : 'Vault Cash Register'}
             </div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">{acct.name}</div>
-            <div className="mt-2 font-mono text-2xl font-bold text-slate-900 tabular-nums">
+            <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{acct.name}</div>
+            <div className="mt-2 font-mono text-2xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
               {formatInr(acct.currentBalance)}
             </div>
-            <div className="mt-1 text-xs text-slate-500">
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Opening {formatInr(acct.openingBalance)} · {acct.address}
             </div>
           </div>
         ))}
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="text-xs font-medium text-slate-500">Reconciliation Progress</div>
-          <div className="mt-1 text-sm font-semibold text-slate-900">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Reconciliation Progress</div>
+          <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
             Bank Statement Matching
           </div>
-          <div className="mt-2 font-mono text-2xl font-bold text-teal-800 tabular-nums">
+          <div className="mt-2 font-mono text-2xl font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
             {reconciledCount} / {workspace.vouchers.length}
           </div>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {pdcVouchers.length} Post-Dated Cheque(s) scheduled
           </div>
         </div>
       </div>
 
       {/* Bank Statement Reconciliation Table */}
-      <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-900">
+      <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Bank Statement & Post-Dated Cheque (PDC) Reconciliation
           </h2>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             Click Match / Unmatch to reconcile entries against bank feed
           </span>
         </div>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+            <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
               <th className="py-3 px-4">Voucher · Date</th>
               <th className="py-3 px-3">Particulars</th>
               <th className="py-3 px-3">Mode / Cheque / PDC Date</th>
@@ -91,20 +91,20 @@ export function BankingModule() {
               <th className="py-3 px-4 text-right">Reconciliation</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {workspace.vouchers.map((v) => (
-              <tr key={v.id} className="hover:bg-slate-50/70">
-                <td className="py-3 px-4 font-mono text-xs text-slate-700">
-                  <div className="font-semibold text-slate-900">{v.voucherNo}</div>
+              <tr key={v.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
+                <td className="py-3 px-4 font-mono text-xs text-slate-700 dark:text-slate-300">
+                  <div className="font-semibold text-slate-900 dark:text-slate-100">{v.voucherNo}</div>
                   <div>{v.voucherDate}</div>
                 </td>
-                <td className="py-3 px-3 text-xs text-slate-800">
+                <td className="py-3 px-3 text-xs text-slate-800 dark:text-slate-200">
                   <div>
                     {v.debitLedgerName} ← {v.creditLedgerName}
                   </div>
-                  <div className="text-slate-500">{v.narration}</div>
+                  <div className="text-slate-500 dark:text-slate-400">{v.narration}</div>
                 </td>
-                <td className="py-3 px-3 font-mono text-xs text-slate-600">
+                <td className="py-3 px-3 font-mono text-xs text-slate-600 dark:text-slate-400">
                   {v.paymentMode}
                   {v.chequeNo ? ` · ${v.chequeNo}` : ''}
                   {v.pdcDate ? ` · PDC ${v.pdcDate}` : ''}
@@ -177,17 +177,17 @@ export function GstComplianceModule() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             GST & Tax Compliance
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Direct E-Invoicing (IRN/QR) · E-Way Bill Generation · GSTR-1, GSTR-2A/2B Reconciliation & GSTR-3B JSON Filing
           </p>
         </div>
         <button
           type="button"
           onClick={handleDownloadGstr1Json}
-          className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap"
+          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap"
         >
           <Download className="h-4 w-4" />
           <span>Export GSTR-1 Portal JSON</span>
@@ -196,34 +196,34 @@ export function GstComplianceModule() {
 
       {/* GST Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">Output CGST + SGST</div>
-          <div className="mt-1 font-mono text-xl font-bold text-slate-900 tabular-nums">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="text-xs text-slate-500 dark:text-slate-400">Output CGST + SGST</div>
+          <div className="mt-1 font-mono text-xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
             {formatInr(financials.outputGst.cgst + financials.outputGst.sgst)}
           </div>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">Output IGST</div>
-          <div className="mt-1 font-mono text-xl font-bold text-slate-900 tabular-nums">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="text-xs text-slate-500 dark:text-slate-400">Output IGST</div>
+          <div className="mt-1 font-mono text-xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
             {formatInr(financials.outputGst.igst)}
           </div>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">Eligible Input ITC (GSTR-2B)</div>
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="text-xs text-slate-500 dark:text-slate-400">Eligible Input ITC (GSTR-2B)</div>
           <div className="mt-1 font-mono text-xl font-bold text-emerald-700 tabular-nums">
             {formatInr(financials.inputGstItc)}
           </div>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">Net GSTR-3B Tax Payable</div>
-          <div className="mt-1 font-mono text-xl font-bold text-teal-800 tabular-nums">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="text-xs text-slate-500 dark:text-slate-400">Net GSTR-3B Tax Payable</div>
+          <div className="mt-1 font-mono text-xl font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
             {formatInr(financials.netGstPayable)}
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1.5 overflow-x-auto">
+      <div className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 overflow-x-auto">
         {[
           { id: 'einvoice', label: 'E-Invoice (IRN/QR) & E-Way Bill' },
           { id: 'gstr1', label: 'GSTR-1 Outward Supplies' },
@@ -236,8 +236,8 @@ export function GstComplianceModule() {
             onClick={() => setGstTab(t.id as typeof gstTab)}
             className={`rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
               gstTab === t.id
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
+                ? 'bg-emerald-700 dark:bg-emerald-600 text-white'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             {t.label}
@@ -246,10 +246,10 @@ export function GstComplianceModule() {
       </div>
 
       {gstTab === 'einvoice' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Invoice No · Date</th>
                 <th className="py-3 px-3">Buyer / GSTIN</th>
                 <th className="py-3 px-3 text-right">Invoice Value</th>
@@ -257,21 +257,21 @@ export function GstComplianceModule() {
                 <th className="py-3 px-4 text-right">IRP Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {b2bInvoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-slate-50/70">
+                <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
                   <td className="py-3 px-4 font-mono text-xs">
                     <Link
                       href={`/admin/bills/${inv.id}`}
-                      className="font-semibold text-teal-800 hover:underline"
+                      className="font-semibold text-emerald-700 dark:text-emerald-400 hover:underline"
                     >
                       {inv.invoiceNo}
                     </Link>
-                    <div className="text-slate-500">{inv.invoiceDate}</div>
+                    <div className="text-slate-500 dark:text-slate-400">{inv.invoiceDate}</div>
                   </td>
                   <td className="py-3 px-3">
-                    <div className="text-sm font-medium text-slate-900">{inv.customerName}</div>
-                    <div className="text-xs font-mono text-slate-500">
+                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{inv.customerName}</div>
+                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
                       {inv.customerGstin || 'B2C'}
                     </div>
                   </td>
@@ -282,7 +282,7 @@ export function GstComplianceModule() {
                     <div className={inv.irn ? 'text-emerald-700 font-medium' : 'text-amber-700'}>
                       {inv.irn ? `IRN: ${inv.irn.slice(0, 18)}…` : 'IRN Pending'}
                     </div>
-                    <div className="text-slate-500">
+                    <div className="text-slate-500 dark:text-slate-400">
                       {inv.ewayBillNo ? `EWB: ${inv.ewayBillNo}` : 'No E-Way Bill'}
                     </div>
                   </td>
@@ -305,7 +305,7 @@ export function GstComplianceModule() {
                               `IRN & Signed QR generated for ${inv.invoiceNo}.`
                             )
                           }
-                          className="inline-flex items-center gap-1 rounded-md bg-teal-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap"
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-700 dark:bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap"
                         >
                           <QrCode className="h-3.5 w-3.5" />
                           <span>Generate IRN</span>
@@ -324,7 +324,7 @@ export function GstComplianceModule() {
                               `E-Way Bill generated for ${inv.invoiceNo}.`
                             )
                           }
-                          className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                          className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap"
                         >
                           Generate E-Way Bill
                         </button>
@@ -345,10 +345,10 @@ export function GstComplianceModule() {
       )}
 
       {gstTab === 'gstr1' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">GSTR-1 Table Section</th>
                 <th className="py-3 px-3 text-right">Voucher Count</th>
                 <th className="py-3 px-3 text-right">Taxable Value</th>
@@ -356,9 +356,9 @@ export function GstComplianceModule() {
                 <th className="py-3 px-4 text-right">IGST</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-mono text-xs">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-xs">
               <tr>
-                <td className="py-3 px-4 font-sans font-medium text-slate-900">
+                <td className="py-3 px-4 font-sans font-medium text-slate-900 dark:text-slate-100">
                   4A — B2B Registered Invoices
                 </td>
                 <td className="py-3 px-3 text-right tabular-nums">{b2bInvoices.length}</td>
@@ -373,7 +373,7 @@ export function GstComplianceModule() {
                 </td>
               </tr>
               <tr>
-                <td className="py-3 px-4 font-sans font-medium text-slate-900">
+                <td className="py-3 px-4 font-sans font-medium text-slate-900 dark:text-slate-100">
                   7 — B2CS Retail POS Supplies
                 </td>
                 <td className="py-3 px-3 text-right tabular-nums">
@@ -401,10 +401,10 @@ export function GstComplianceModule() {
       )}
 
       {gstTab === 'gstr2b' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Supplier Bill · Date</th>
                 <th className="py-3 px-3">Supplier / GSTIN</th>
                 <th className="py-3 px-3 text-right">Books ITC</th>
@@ -412,17 +412,17 @@ export function GstComplianceModule() {
                 <th className="py-3 px-4 text-right">Match Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {workspace.purchases
                 .filter((p) => p.docType === 'PURCHASE_BILL')
                 .map((p) => (
                   <tr key={p.id}>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-900">
+                    <td className="py-3 px-4 font-mono text-xs text-slate-900 dark:text-slate-100">
                       {p.billNo} · {p.billDate}
                     </td>
                     <td className="py-3 px-3">
-                      <div className="text-sm font-medium text-slate-900">{p.supplierName}</div>
-                      <div className="text-xs font-mono text-slate-500">{p.supplierGstin}</div>
+                      <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{p.supplierName}</div>
+                      <div className="text-xs font-mono text-slate-500 dark:text-slate-400">{p.supplierGstin}</div>
                     </td>
                     <td className="py-3 px-3 text-right font-mono text-xs tabular-nums">
                       {formatInr(p.taxAmount)}
@@ -441,34 +441,34 @@ export function GstComplianceModule() {
       )}
 
       {gstTab === 'gstr3b' && (
-        <section className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <FileCheck2 className="h-4 w-4 text-teal-700" />
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <FileCheck2 className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
             <span>GSTR-3B Monthly Return Computation (Nov 2026)</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 font-mono text-xs">
-            <div className="rounded border border-slate-200 p-3.5">
-              <div className="font-sans text-slate-500">3.1 Outward Tax Liability</div>
-              <div className="mt-1 text-lg font-bold text-slate-900 tabular-nums">
+            <div className="rounded border border-slate-200 dark:border-slate-800 p-3.5">
+              <div className="font-sans text-slate-500 dark:text-slate-400">3.1 Outward Tax Liability</div>
+              <div className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
                 {formatInr(financials.outputGst.total)}
               </div>
-              <div className="mt-1 text-slate-500">
+              <div className="mt-1 text-slate-500 dark:text-slate-400">
                 CGST {formatInr(financials.outputGst.cgst)} · SGST {formatInr(financials.outputGst.sgst)} · IGST {formatInr(financials.outputGst.igst)}
               </div>
             </div>
-            <div className="rounded border border-slate-200 p-3.5">
-              <div className="font-sans text-slate-500">4. Eligible Input Tax Credit (ITC)</div>
+            <div className="rounded border border-slate-200 dark:border-slate-800 p-3.5">
+              <div className="font-sans text-slate-500 dark:text-slate-400">4. Eligible Input Tax Credit (ITC)</div>
               <div className="mt-1 text-lg font-bold text-emerald-700 tabular-nums">
                 {formatInr(financials.inputGstItc)}
               </div>
-              <div className="mt-1 text-slate-500">Auto-populated from Purchase Register</div>
+              <div className="mt-1 text-slate-500 dark:text-slate-400">Auto-populated from Purchase Register</div>
             </div>
-            <div className="rounded border border-slate-200 p-3.5">
-              <div className="font-sans text-slate-500">6.1 Net Cash Ledger Challan</div>
-              <div className="mt-1 text-lg font-bold text-teal-800 tabular-nums">
+            <div className="rounded border border-slate-200 dark:border-slate-800 p-3.5">
+              <div className="font-sans text-slate-500 dark:text-slate-400">6.1 Net Cash Ledger Challan</div>
+              <div className="mt-1 text-lg font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
                 {formatInr(financials.netGstPayable)}
               </div>
-              <div className="mt-1 text-slate-500">Ready for PMT-06 GST Portal Filing</div>
+              <div className="mt-1 text-slate-500 dark:text-slate-400">Ready for PMT-06 GST Portal Filing</div>
             </div>
           </div>
         </section>
@@ -499,10 +499,10 @@ export function CrmMargMartModule() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             CRM Pipeline & Marg Mart Online Store
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Customer Follow-Ups · Institutional Sales Pipeline · Marg Mart E-Commerce Storefront Sync
           </p>
         </div>
@@ -515,14 +515,14 @@ export function CrmMargMartModule() {
                 'success'
               )
             }
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             <span>Sync Marg Mart Store</span>
           </button>
           <Link
             href="/admin/crm/new"
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap"
           >
             <Plus className="h-4 w-4" />
             <span>Add Lead / Online Order</span>
@@ -530,7 +530,7 @@ export function CrmMargMartModule() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1.5 w-fit">
+      <div className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 w-fit">
         {[
           { id: 'ALL', label: `All Records (${workspace.crmRecords.length})` },
           {
@@ -548,8 +548,8 @@ export function CrmMargMartModule() {
             onClick={() => setChannelTab(t.id as typeof channelTab)}
             className={`rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
               channelTab === t.id
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
+                ? 'bg-emerald-700 dark:bg-emerald-600 text-white'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             {t.label}
@@ -557,10 +557,10 @@ export function CrmMargMartModule() {
         ))}
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+      <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+            <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
               <th className="py-3 px-4">Customer / Channel</th>
               <th className="py-3 px-3">Order / Inquiry Items</th>
               <th className="py-3 px-3">Follow-Up Date</th>
@@ -569,26 +569,26 @@ export function CrmMargMartModule() {
               <th className="py-3 px-4 text-right">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {filtered.map((r) => (
-              <tr key={r.id} className="hover:bg-slate-50/70">
+              <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
                 <td className="py-3 px-4">
-                  <div className="font-medium text-slate-900">{r.customerName}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="font-medium text-slate-900 dark:text-slate-100">{r.customerName}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
                     {r.phone} · {r.channel === 'MARG_MART_ORDER' ? 'Marg Mart Online' : 'CRM Lead'}
                   </div>
                 </td>
-                <td className="py-3 px-3 text-xs text-slate-700 max-w-xs">
+                <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300 max-w-xs">
                   <div className="truncate font-medium">{r.itemsSummary}</div>
-                  <div className="text-slate-500 truncate">{r.notes}</div>
+                  <div className="text-slate-500 dark:text-slate-400 truncate">{r.notes}</div>
                 </td>
-                <td className="py-3 px-3 font-mono text-xs text-slate-600">
+                <td className="py-3 px-3 font-mono text-xs text-slate-600 dark:text-slate-400">
                   {r.nextFollowUp}
                 </td>
                 <td className="py-3 px-3 text-right font-mono text-xs font-semibold tabular-nums">
                   {formatInr(r.orderValue)}
                 </td>
-                <td className="py-3 px-3 text-xs font-semibold text-teal-800">{r.stage}</td>
+                <td className="py-3 px-3 text-xs font-semibold text-emerald-700 dark:text-emerald-400">{r.stage}</td>
                 <td className="py-3 px-4 text-right">
                   {r.stage !== 'Won' ? (
                     <button
@@ -600,7 +600,7 @@ export function CrmMargMartModule() {
                           `${r.customerName} advanced to ${nextStageMap[r.stage]}.`
                         )
                       }
-                      className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-teal-600 hover:text-teal-800 whitespace-nowrap"
+                      className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-emerald-600 dark:border-emerald-500 hover:text-emerald-700 dark:text-emerald-400 whitespace-nowrap"
                     >
                       Advance → {nextStageMap[r.stage]}
                     </button>

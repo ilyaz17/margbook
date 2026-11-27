@@ -105,24 +105,24 @@ export function StockInventoryModule() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Stock & Inventory Management
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Multi-Godown Tracking · Batch, Serial & Expiry Control · Dump Alerts · Auto-Reorder · Transfers
           </p>
         </div>
         <Link
           href="/admin/inventory/movements/new"
-          className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap"
+          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap"
         >
           <ArrowLeftRight className="h-4 w-4" />
           <span>Transfer / Adjust / Dump Stock</span>
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2.5">
-        <div className="flex items-center gap-1 rounded-md bg-slate-100 p-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-4 py-2.5">
+        <div className="flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-900 p-1">
           {[
             { id: 'batches', label: `Batch & Serial Register (${enrichedBatches.length})` },
             { id: 'alerts', label: `Expiry & Auto-Reorder (${alertBatches.length + reorderItems.length})` },
@@ -134,8 +134,8 @@ export function StockInventoryModule() {
               onClick={() => setSubTab(t.id as typeof subTab)}
               className={`rounded px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
                 subTab === t.id
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100'
               }`}
             >
               {t.label}
@@ -147,7 +147,7 @@ export function StockInventoryModule() {
           aria-label="Filter by Godown or Branch"
           value={godownFilter}
           onChange={(e) => setGodownFilter(e.target.value)}
-          className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700"
+          className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300"
         >
           {godowns.map((g) => (
             <option key={g} value={g}>
@@ -158,10 +158,10 @@ export function StockInventoryModule() {
       </div>
 
       {subTab === 'batches' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Item / Rack</th>
                 <th className="py-3 px-3">Godown / Store</th>
                 <th className="py-3 px-3">Batch · Serial</th>
@@ -170,17 +170,17 @@ export function StockInventoryModule() {
                 <th className="py-3 px-4 text-right">Stock Valuation</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {enrichedBatches.map((b) => (
-                <tr key={b.id} className="hover:bg-slate-50/70">
+                <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
                   <td className="py-3 px-4">
-                    <div className="font-medium text-slate-900">{b.itemName}</div>
-                    <div className="text-xs font-mono text-slate-500">
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{b.itemName}</div>
+                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
                       {b.sku} · Rack {b.rack}
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-xs text-slate-700">{b.godownName}</td>
-                  <td className="py-3 px-3 font-mono text-xs text-slate-700">
+                  <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300">{b.godownName}</td>
+                  <td className="py-3 px-3 font-mono text-xs text-slate-700 dark:text-slate-300">
                     {b.batchNo}
                     {b.serialNo ? ` · ${b.serialNo}` : ''}
                   </td>
@@ -205,7 +205,7 @@ export function StockInventoryModule() {
                   <td className="py-3 px-3 text-right font-mono text-xs font-semibold tabular-nums">
                     {b.qtyOnHand} {b.uqc}
                   </td>
-                  <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-slate-800">
+                  <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                     {formatInr(b.stockValue)}
                   </td>
                 </tr>
@@ -217,16 +217,16 @@ export function StockInventoryModule() {
 
       {subTab === 'alerts' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5">
-            <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+          <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 pb-3 border-b border-slate-100 dark:border-slate-800">
               Expired & Near-Expiry Dump Queue ({alertBatches.length})
             </h2>
-            <div className="mt-3 divide-y divide-slate-100">
+            <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
               {alertBatches.map((b) => (
                 <div key={b.id} className="py-3 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-slate-900">{b.itemName}</div>
-                    <div className="text-xs font-mono text-slate-500">
+                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{b.itemName}</div>
+                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
                       Batch {b.batchNo} · {b.godownName} · Exp {b.expiryDate} · {b.qtyOnHand} {b.uqc}
                     </div>
                   </div>
@@ -256,30 +256,30 @@ export function StockInventoryModule() {
                 </div>
               ))}
               {alertBatches.length === 0 && (
-                <p className="py-6 text-center text-sm text-slate-500">
+                <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
                   All active stock batches are beyond the {workspace.controlRoom.nearExpiryAlertDays}-day expiry threshold.
                 </p>
               )}
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5">
-            <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+          <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 pb-3 border-b border-slate-100 dark:border-slate-800">
               Auto-Reorder Trigger List ({reorderItems.length})
             </h2>
-            <div className="mt-3 divide-y divide-slate-100">
+            <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
               {reorderItems.map((it) => (
                 <div key={it.id} className="py-3 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-slate-900">{it.name}</div>
-                    <div className="text-xs font-mono text-slate-500">
+                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{it.name}</div>
+                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
                       On Hand: {it.onHand} · Reorder Level: {it.reorderLevel} {it.uqc}
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => void handleAutoReorderPo(it)}
-                    className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap shrink-0"
+                    className="rounded-md bg-emerald-700 dark:bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap shrink-0"
                   >
                     Raise PO (+{it.suggestedPoQty})
                   </button>
@@ -291,10 +291,10 @@ export function StockInventoryModule() {
       )}
 
       {subTab === 'movements' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Date · Type</th>
                 <th className="py-3 px-3">Item / Batch</th>
                 <th className="py-3 px-3">From → To Godown</th>
@@ -302,23 +302,23 @@ export function StockInventoryModule() {
                 <th className="py-3 px-4">Reason</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {workspace.stockMovements.map((m) => (
-                <tr key={m.id} className="hover:bg-slate-50/70">
-                  <td className="py-3 px-4 font-mono text-xs text-slate-700">
+                <tr key={m.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
+                  <td className="py-3 px-4 font-mono text-xs text-slate-700 dark:text-slate-300">
                     {m.movementDate} · {m.movementType}
                   </td>
                   <td className="py-3 px-3">
-                    <div className="font-medium text-slate-900">{m.itemName}</div>
-                    <div className="text-xs font-mono text-slate-500">Batch {m.batchNo}</div>
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{m.itemName}</div>
+                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400">Batch {m.batchNo}</div>
                   </td>
-                  <td className="py-3 px-3 text-xs text-slate-700">
+                  <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300">
                     {m.fromGodown} → {m.toGodown}
                   </td>
                   <td className="py-3 px-3 text-right font-mono text-xs font-semibold tabular-nums">
                     {m.qtyDelta > 0 ? `+${m.qtyDelta}` : m.qtyDelta}
                   </td>
-                  <td className="py-3 px-4 text-xs text-slate-600">{m.reason}</td>
+                  <td className="py-3 px-4 text-xs text-slate-600 dark:text-slate-400">{m.reason}</td>
                 </tr>
               ))}
             </tbody>
@@ -353,31 +353,31 @@ export function AccountingModule() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Accounting Transactions & Outstandings
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Double-Entry Vouchers (Receipt, Payment, Contra, Journal, Debit/Credit Notes) · Bill-by-Bill Reminders
           </p>
         </div>
         <Link
           href="/admin/accounting/vouchers/new"
-          className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap"
+          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap"
         >
           <Plus className="h-4 w-4" />
           <span>Post Double-Entry Voucher</span>
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2.5">
-        <div className="flex items-center gap-1 rounded-md bg-slate-100 p-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-4 py-2.5">
+        <div className="flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-900 p-1">
           <button
             type="button"
             onClick={() => setSubTab('vouchers')}
             className={`rounded px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
               subTab === 'vouchers'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100'
             }`}
           >
             Voucher Register ({workspace.vouchers.length})
@@ -387,8 +387,8 @@ export function AccountingModule() {
             onClick={() => setSubTab('outstanding')}
             className={`rounded px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
               subTab === 'outstanding'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100'
             }`}
           >
             Bill-by-Bill Outstanding & Reminders ({outstandingLedgers.length})
@@ -400,7 +400,7 @@ export function AccountingModule() {
             aria-label="Filter voucher type"
             value={voucherFilter}
             onChange={(e) => setVoucherFilter(e.target.value as typeof voucherFilter)}
-            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300"
           >
             <option value="ALL">All Voucher Types</option>
             <option value="Receipt">Receipt</option>
@@ -414,10 +414,10 @@ export function AccountingModule() {
       </div>
 
       {subTab === 'vouchers' ? (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Voucher No · Type</th>
                 <th className="py-3 px-3">Date</th>
                 <th className="py-3 px-3">Debit Ledger (Dr)</th>
@@ -426,32 +426,32 @@ export function AccountingModule() {
                 <th className="py-3 px-4 text-right">Amount</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredVouchers.map((v) => (
-                <tr key={v.id} className="hover:bg-slate-50/70">
+                <tr key={v.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
                   <td className="py-3 px-4">
-                    <div className="font-mono text-xs font-semibold text-slate-900">
+                    <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100">
                       {v.voucherNo}
                     </div>
-                    <div className="text-xs text-slate-500">{v.voucherType}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{v.voucherType}</div>
                   </td>
-                  <td className="py-3 px-3 font-mono text-xs text-slate-600">
+                  <td className="py-3 px-3 font-mono text-xs text-slate-600 dark:text-slate-400">
                     {v.voucherDate}
                   </td>
-                  <td className="py-3 px-3 text-xs font-medium text-slate-800">
+                  <td className="py-3 px-3 text-xs font-medium text-slate-800 dark:text-slate-200">
                     {v.debitLedgerName}
                   </td>
-                  <td className="py-3 px-3 text-xs text-slate-700">
+                  <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300">
                     {v.creditLedgerName}
                   </td>
-                  <td className="py-3 px-3 text-xs text-slate-600">
+                  <td className="py-3 px-3 text-xs text-slate-600 dark:text-slate-400">
                     <div>{v.paymentMode}</div>
                     <div className="text-[11px] text-slate-400 truncate max-w-[200px]">
                       {v.referenceInvoiceNo ? `Ref ${v.referenceInvoiceNo} · ` : ''}
                       {v.narration}
                     </div>
                   </td>
-                  <td className="py-3 px-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-900">
+                  <td className="py-3 px-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {formatInr(v.amount)}
                   </td>
                 </tr>
@@ -460,10 +460,10 @@ export function AccountingModule() {
           </table>
         </section>
       ) : (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Party Account</th>
                 <th className="py-3 px-3">Type</th>
                 <th className="py-3 px-3 text-right">Credit Limit</th>
@@ -471,27 +471,27 @@ export function AccountingModule() {
                 <th className="py-3 px-4 text-right">Payment Reminder</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {outstandingLedgers.map((l) => (
-                <tr key={l.id} className="hover:bg-slate-50/70">
+                <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
                   <td className="py-3 px-4">
                     <Link
                       href={`/admin/ledgers/${l.id}`}
-                      className="font-medium text-teal-800 hover:underline"
+                      className="font-medium text-emerald-700 dark:text-emerald-400 hover:underline"
                     >
                       {l.name}
                     </Link>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
                       {l.phone || 'N/A'} {l.email ? `· ${l.email}` : ''}
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-xs text-slate-700">
+                  <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300">
                     {l.groupType === 'Customer' ? 'Receivable (Dr)' : 'Payable (Cr)'}
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-slate-600">
+                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-slate-600 dark:text-slate-400">
                     {formatInr(l.creditLimit)}
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-xs font-semibold tabular-nums text-slate-900">
+                  <td className="py-3 px-3 text-right font-mono text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {formatInr(l.currentBalance)} {l.balanceType}
                   </td>
                   <td className="py-3 px-4 text-right">
@@ -503,7 +503,7 @@ export function AccountingModule() {
                           'info'
                         )
                       }
-                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-teal-600 hover:text-teal-800 whitespace-nowrap"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-emerald-600 dark:border-emerald-500 hover:text-emerald-700 dark:text-emerald-400 whitespace-nowrap"
                     >
                       <BellRing className="h-3.5 w-3.5" />
                       <span>WhatsApp / SMS Remind</span>

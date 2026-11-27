@@ -5,14 +5,16 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   CheckCircle2,
+  Copy,
+  MessageCircle,
   Printer,
-  QrCode,
   ScanBarcode,
-  Share2,
   Sparkles,
   User,
 } from 'lucide-react';
+import { buildWhatsAppBillText } from '../lib/barcode-utils';
 import { round2 } from '../lib/erp-engine';
+import { UpiQrCodeSvg } from './QrAndBarcodeWidgets';
 import { useMargBooks } from './MargBooksContext';
 
 function formatInr(n: number) {
@@ -54,32 +56,35 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
     const loyaltySaving = round2(
       invoice.loyaltyRedeemed * workspace.controlRoom.loyaltyPointValue
     );
+    const couponSaving = round2(invoice.couponDiscount || 0);
     const totalQtyCount = round2(
       invoice.items.reduce((sum, ln) => sum + ln.qty + ln.freeQty, 0)
     );
     return {
-      totalMrpSavings: round2(lineSavings + loyaltySaving),
+      totalMrpSavings: round2(lineSavings + couponSaving + loyaltySaving),
       totalQtyCount,
     };
   }, [invoice, workspace.controlRoom.loyaltyPointValue]);
 
   if (!invoice) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-10 text-center space-y-4">
-        <h1 className="text-xl font-bold text-slate-900">Invoice Not Found</h1>
-        <p className="text-sm text-slate-600">
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-10 text-center space-y-4">
+        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+          Invoice Not Found
+        </h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           The bill record you requested does not exist in the active store workspace.
         </p>
         <div className="flex items-center justify-center gap-3">
           <Link
             href="/admin/sales"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Open Sale Register
           </Link>
           <Link
             href="/admin/pos"
-            className="rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
+            className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
           >
             Back to Supermarket POS
           </Link>
@@ -88,33 +93,36 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
     );
   }
 
-  const handleCopyShare = () => {
-    const shareText = [
-      `${activeCompany?.name || 'FreshMart Superstore'}`,
-      `Bill No: ${invoice.invoiceNo} · Date: ${invoice.invoiceDate}`,
-      `Shopper: ${invoice.customerName}`,
-      `Items: ${invoice.items.length} · Net Total: ${formatInr(invoice.grandTotal)} (${invoice.paymentModeSummary})`,
-      billMetrics.totalMrpSavings > 0
-        ? `Total Savings on MRP: ${formatInr(billMetrics.totalMrpSavings)}`
-        : '',
-      invoice.loyaltyEarned > 0 ? `Loyalty Points Earned: +${invoice.loyaltyEarned} pts` : '',
-      invoice.irn ? `IRN: ${invoice.irn.slice(0, 24)}...` : '',
-      'Thank you for shopping at our supermarket!',
-    ]
-      .filter(Boolean)
-      .join('\n');
+  const whatsAppText = buildWhatsAppBillText({
+    companyName: activeCompany?.name || 'FreshMart Superstore',
+    branchName: activeCompany?.branchName,
+    invoiceNo: invoice.invoiceNo,
+    invoiceDate: invoice.invoiceDate,
+    customerName: invoice.customerName,
+    items: invoice.items,
+    grandTotal: invoice.grandTotal,
+    totalMrpSavings: billMetrics.totalMrpSavings,
+    couponCode: invoice.couponCode,
+    couponDiscount: invoice.couponDiscount,
+    loyaltyEarned: invoice.loyaltyEarned,
+    upiVpa: workspace.controlRoom.upiVpa,
+  });
 
+  const cleanPhone = invoice.customerPhone.replace(/\D/g, '');
+  const whatsAppUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsAppText)}`;
+
+  const handleCopyWhatsApp = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      void navigator.clipboard.writeText(shareText);
+      void navigator.clipboard.writeText(whatsAppText);
     }
-    showToast(`Supermarket bill summary for ${invoice.invoiceNo} copied for WhatsApp/SMS.`, 'success');
+    showToast(`WhatsApp bill for ${invoice.invoiceNo} copied to clipboard.`, 'success');
   };
 
   const containerWidthClass =
     format === '58mm'
       ? 'max-w-[300px]'
       : format === '80mm'
-        ? 'max-w-[410px]'
+        ? 'max-w-[420px]'
         : 'max-w-[940px]';
 
   return (
@@ -124,17 +132,17 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
         <div className="flex items-center gap-3">
           <Link
             href="/admin/sales"
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap shrink-0"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Sale Register</span>
           </Link>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span className="font-mono">{invoice.invoiceNo}</span>
             </h1>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               {invoice.docType.replace('_', ' ')} · {invoice.invoiceDate} · Lane{' '}
               {invoice.counterCode} · {invoice.status}
             </p>
@@ -145,7 +153,7 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
           <div
             role="tablist"
             aria-label="Receipt print format"
-            className="inline-flex items-center gap-1 rounded-lg bg-slate-200/80 p-1"
+            className="inline-flex items-center gap-1 rounded-lg bg-slate-200/80 dark:bg-slate-800 p-1"
           >
             {(['80mm', '58mm', 'A4'] as const).map((opt) => (
               <button
@@ -156,8 +164,8 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
                 onClick={() => setFormat(opt)}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   format === opt
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 {opt === 'A4' ? 'A4 GST Invoice' : `${opt} Thermal`}
@@ -167,17 +175,27 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
 
           <button
             type="button"
-            onClick={handleCopyShare}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0 cursor-pointer"
+            onClick={handleCopyWhatsApp}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <Share2 className="h-3.5 w-3.5" />
-            <span>Share Summary</span>
+            <Copy className="h-3.5 w-3.5" />
+            <span>Copy Bill</span>
           </button>
+
+          <a
+            href={whatsAppUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-3 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 whitespace-nowrap shrink-0"
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            <span>WhatsApp Bill</span>
+          </a>
 
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 px-4 py-2 text-xs font-semibold text-white whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Printer className="h-3.5 w-3.5" />
             <span>Print Bill</span>
@@ -185,17 +203,17 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
 
           <Link
             href="/admin/pos"
-            className="inline-flex items-center gap-1.5 rounded-md border border-teal-700 bg-teal-50 px-3.5 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100 whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-slate-100 hover:border-emerald-600 whitespace-nowrap shrink-0"
           >
-            <ScanBarcode className="h-3.5 w-3.5" />
+            <ScanBarcode className="h-3.5 w-3.5 text-emerald-600" />
             <span>Next Shopper</span>
           </Link>
         </div>
       </div>
 
-      {/* Printable Supermarket Document Sheet */}
+      {/* Printable Supermarket Document Sheet (Always high-contrast white paper for print accuracy) */}
       <div
-        className={`print-sheet mx-auto w-full rounded-xl border border-slate-200 bg-white p-6 sm:p-8 transition-all ${containerWidthClass}`}
+        className={`print-sheet mx-auto w-full rounded-xl border border-slate-200 bg-white text-slate-900 p-6 sm:p-8 transition-all ${containerWidthClass}`}
       >
         {/* Header */}
         <div
@@ -206,7 +224,7 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
           }`}
         >
           <div>
-            <div className="text-[11px] font-semibold tracking-wider text-teal-800 uppercase">
+            <div className="text-[11px] font-semibold tracking-wider text-emerald-800 uppercase">
               {workspace.controlRoom.invoiceHeaderTitle}
             </div>
             <h2 className="mt-1 font-display text-lg font-bold text-slate-950">
@@ -248,7 +266,7 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
           {invoice.ledgerId && (
             <Link
               href={`/admin/ledgers/${invoice.ledgerId}`}
-              className="no-print inline-flex items-center gap-1.5 text-xs font-medium text-teal-700 hover:text-teal-900"
+              className="no-print inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-900"
             >
               <User className="h-3.5 w-3.5" />
               <span>View Party Ledger</span>
@@ -356,6 +374,14 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
               </span>
             </div>
           )}
+          {invoice.couponCode && (invoice.couponDiscount || 0) > 0 && (
+            <div className="flex justify-between text-emerald-800 font-medium">
+              <span>Promo Coupon ({invoice.couponCode})</span>
+              <span className="font-mono tabular-nums">
+                -{formatInr(invoice.couponDiscount || 0)}
+              </span>
+            </div>
+          )}
           {invoice.cgstAmount > 0 && (
             <div className="flex justify-between text-slate-600">
               <span>CGST + SGST</span>
@@ -371,7 +397,7 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
             </div>
           )}
           {invoice.loyaltyRedeemed > 0 && (
-            <div className="flex justify-between text-teal-800">
+            <div className="flex justify-between text-emerald-800">
               <span>Loyalty Redeemed ({invoice.loyaltyRedeemed} pts)</span>
               <span className="font-mono tabular-nums">
                 -{formatInr(invoice.loyaltyRedeemed * workspace.controlRoom.loyaltyPointValue)}
@@ -412,7 +438,7 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
             invoice.payments.map((p, idx) => (
               <div key={`${p.mode}-${idx}`} className="flex justify-between text-slate-600">
                 <span>
-                  {p.mode}
+                  {p.mode === 'Credit' ? 'Credit (Udhaar Khata)' : p.mode}
                   {p.reference ? ` · Ref ${p.reference}` : ''}
                 </span>
                 <span className="font-mono font-medium tabular-nums text-slate-900">
@@ -424,13 +450,13 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
             <div className="text-slate-600">{invoice.paymentModeSummary}</div>
           )}
           {invoice.loyaltyEarned > 0 && (
-            <div className="pt-1.5 border-t border-slate-200 text-teal-800 font-medium">
+            <div className="pt-1.5 border-t border-slate-200 text-emerald-800 font-medium">
               Loyalty Bonus Credited: +{invoice.loyaltyEarned} points
             </div>
           )}
         </div>
 
-        {/* E-Invoice IRN / QR & Terms */}
+        {/* Embedded Scannable Dynamic UPI QR + E-Invoice IRN & Terms */}
         <div className="mt-5 pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-[11px] text-slate-500">
           <div className="space-y-1 min-w-0">
             {invoice.irn && (
@@ -441,12 +467,15 @@ export function BillDetailPage({ invoiceId }: { invoiceId: string }) {
             )}
             <p className="leading-relaxed">{workspace.controlRoom.invoiceTerms}</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0 text-slate-700">
-            <QrCode className="h-10 w-10 text-slate-800 shrink-0" />
-            <div className="text-[10px] leading-tight">
-              <div className="font-semibold">Digital GST QR</div>
-              <div className="font-mono text-slate-500">{invoice.invoiceNo}</div>
-            </div>
+          <div className="flex flex-col items-center shrink-0">
+            <UpiQrCodeSvg
+              vpa={workspace.controlRoom.upiVpa || 'freshmart@upi'}
+              payeeName={activeCompany?.name || 'FreshMart Superstore'}
+              amount={invoice.grandTotal}
+              note={`Bill ${invoice.invoiceNo}`}
+              txnRef={invoice.invoiceNo}
+              size={84}
+            />
           </div>
         </div>
       </div>

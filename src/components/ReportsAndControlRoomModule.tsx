@@ -5,9 +5,12 @@ import {
   DatabaseBackup,
   Download,
   Lock,
+  Plus,
+  QrCode,
   RefreshCcw,
   Save,
   ShieldCheck,
+  Tag,
   Unlock,
 } from 'lucide-react';
 import type { ControlRoomConfig } from '../types/erp';
@@ -41,7 +44,7 @@ export function ReportsAnalyticsModule() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `MargBooks_${reportTab}_2026-27.csv`;
+    a.download = `FreshMart_${reportTab}_2026-27.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Financial report exported to CSV.', 'success');
@@ -66,24 +69,24 @@ export function ReportsAnalyticsModule() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Reports & Financial Analytics
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            Reports &amp; Financial Analytics
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Trial Balance · Profit & Loss (P&L) · Balance Sheet · Day Book · Stock Valuation · Party-Wise Sales
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Trial Balance · Profit &amp; Loss (P&amp;L) · Balance Sheet · Day Book · Stock Valuation · Party-Wise Sales
           </p>
         </div>
         <button
           type="button"
           onClick={handleExportCsv}
-          className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-800 whitespace-nowrap"
+          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 whitespace-nowrap cursor-pointer"
         >
           <Download className="h-4 w-4" />
           <span>Export Report CSV</span>
         </button>
       </div>
 
-      <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white p-1.5">
+      <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5">
         {[
           { id: 'trial', label: 'Trial Balance' },
           { id: 'pnl', label: 'Profit & Loss (P&L)' },
@@ -96,10 +99,10 @@ export function ReportsAnalyticsModule() {
             key={t.id}
             type="button"
             onClick={() => setReportTab(t.id as typeof reportTab)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
+            className={`rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap cursor-pointer ${
               reportTab === t.id
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
+                ? 'bg-emerald-700 text-white dark:bg-emerald-600'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             {t.label}
@@ -108,32 +111,36 @@ export function ReportsAnalyticsModule() {
       </div>
 
       {reportTab === 'trial' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Account Ledger</th>
                 <th className="py-3 px-3">Account Group</th>
                 <th className="py-3 px-3 text-right">Debit (₹)</th>
                 <th className="py-3 px-4 text-right">Credit (₹)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {financials.trialBalance.map((row, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/70">
-                  <td className="py-2.5 px-4 font-medium text-slate-900">{row.ledger}</td>
-                  <td className="py-2.5 px-3 text-xs text-slate-500">{row.group}</td>
-                  <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-slate-800">
+                <tr key={idx} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                  <td className="py-2.5 px-4 font-medium text-slate-900 dark:text-slate-100">
+                    {row.ledger}
+                  </td>
+                  <td className="py-2.5 px-3 text-xs text-slate-500 dark:text-slate-400">
+                    {row.group}
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                     {row.debit > 0 ? formatInr(row.debit) : '—'}
                   </td>
-                  <td className="py-2.5 px-4 text-right font-mono text-xs tabular-nums text-slate-800">
+                  <td className="py-2.5 px-4 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                     {row.credit > 0 ? formatInr(row.credit) : '—'}
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold text-slate-900">
+              <tr className="border-t-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80 font-semibold text-slate-900 dark:text-slate-100">
                 <td colSpan={2} className="py-3 px-4 text-xs">
                   Trial Balance Total (Double-Entry Reconciled)
                 </td>
@@ -151,54 +158,56 @@ export function ReportsAnalyticsModule() {
 
       {reportTab === 'pnl' && (
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
-            <h2 className="text-base font-semibold text-slate-900 pb-2 border-b border-slate-100">
-              Trading & Expense Side (Debit)
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-3">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 pb-2 border-b border-slate-100 dark:border-slate-800">
+              Trading &amp; Expense Side (Debit)
             </h2>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-600">Net Purchases (Ex-GST)</span>
-                <span className="font-mono tabular-nums">
+                <span className="text-slate-600 dark:text-slate-400">Net Purchases (Ex-GST)</span>
+                <span className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
                   {formatInr(Math.max(0, financials.totalPurchases - financials.inputGstItc))}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Operating & Store Expenses</span>
-                <span className="font-mono tabular-nums">
+                <span className="text-slate-600 dark:text-slate-400">Operating &amp; Store Expenses</span>
+                <span className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
                   {formatInr(financials.totalExpenses)}
                 </span>
               </div>
-              <div className="flex justify-between pt-2 border-t border-slate-200 font-semibold text-slate-900">
+              <div className="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-800 font-semibold text-slate-900 dark:text-slate-100">
                 <span>Estimated Gross Profit</span>
-                <span className="font-mono tabular-nums text-teal-800">
+                <span className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
                   {formatInr(financials.grossProfit)}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
-            <h2 className="text-base font-semibold text-slate-900 pb-2 border-b border-slate-100">
-              Income & Closing Stock Side (Credit)
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-3">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 pb-2 border-b border-slate-100 dark:border-slate-800">
+              Income &amp; Closing Stock Side (Credit)
             </h2>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-600">Net Sales Revenue (Ex-GST)</span>
-                <span className="font-mono tabular-nums">
+                <span className="text-slate-600 dark:text-slate-400">Net Sales Revenue (Ex-GST)</span>
+                <span className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
                   {formatInr(Math.max(0, financials.totalSales - financials.outputGst.total))}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Closing Stock Valuation (FIFO Cost)</span>
-                <span className="font-mono tabular-nums">
+                <span className="text-slate-600 dark:text-slate-400">Closing Stock Valuation (FIFO Cost)</span>
+                <span className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
                   {formatInr(financials.closingStockValue)}
                 </span>
               </div>
-              <div className="flex justify-between pt-2 border-t border-slate-200 font-semibold text-slate-900">
+              <div className="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-800 font-semibold text-slate-900 dark:text-slate-100">
                 <span>Net Profit / (Loss)</span>
                 <span
                   className={`font-mono tabular-nums ${
-                    financials.netProfit >= 0 ? 'text-emerald-700' : 'text-red-700'
+                    financials.netProfit >= 0
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-red-700 dark:text-red-400'
                   }`}
                 >
                   {formatInr(financials.netProfit)}
@@ -211,55 +220,55 @@ export function ReportsAnalyticsModule() {
 
       {reportTab === 'bs' && (
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-2.5 text-sm">
-            <h2 className="text-base font-semibold text-slate-900 pb-2 border-b border-slate-100">
-              Assets & Cash Flow Position
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-2.5 text-sm">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 pb-2 border-b border-slate-100 dark:border-slate-800">
+              Assets &amp; Cash Flow Position
             </h2>
             <div className="flex justify-between">
-              <span className="text-slate-600">Cash & Bank Equivalents</span>
-              <span className="font-mono font-medium tabular-nums">
+              <span className="text-slate-600 dark:text-slate-400">Cash &amp; Bank Equivalents</span>
+              <span className="font-mono font-medium tabular-nums text-slate-900 dark:text-slate-100">
                 {formatInr(financials.cashBankBalance)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-600">Sundry Debtors (Receivables)</span>
-              <span className="font-mono font-medium tabular-nums">
+              <span className="text-slate-600 dark:text-slate-400">Sundry Debtors (Receivables)</span>
+              <span className="font-mono font-medium tabular-nums text-slate-900 dark:text-slate-100">
                 {formatInr(financials.totalReceivables)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-600">Closing Inventory Stock</span>
-              <span className="font-mono font-medium tabular-nums">
+              <span className="text-slate-600 dark:text-slate-400">Closing Inventory Stock</span>
+              <span className="font-mono font-medium tabular-nums text-slate-900 dark:text-slate-100">
                 {formatInr(financials.closingStockValue)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-600">Input GST Credit Receivable</span>
-              <span className="font-mono font-medium tabular-nums">
+              <span className="text-slate-600 dark:text-slate-400">Input GST Credit Receivable</span>
+              <span className="font-mono font-medium tabular-nums text-slate-900 dark:text-slate-100">
                 {formatInr(financials.inputGstItc)}
               </span>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-2.5 text-sm">
-            <h2 className="text-base font-semibold text-slate-900 pb-2 border-b border-slate-100">
-              Liabilities & Capital Equity
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-2.5 text-sm">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 pb-2 border-b border-slate-100 dark:border-slate-800">
+              Liabilities &amp; Capital Equity
             </h2>
             <div className="flex justify-between">
-              <span className="text-slate-600">Sundry Creditors (Payables)</span>
-              <span className="font-mono font-medium tabular-nums">
+              <span className="text-slate-600 dark:text-slate-400">Sundry Creditors (Payables)</span>
+              <span className="font-mono font-medium tabular-nums text-slate-900 dark:text-slate-100">
                 {formatInr(financials.totalPayables)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-600">Output GST Duties & Taxes</span>
-              <span className="font-mono font-medium tabular-nums">
+              <span className="text-slate-600 dark:text-slate-400">Output GST Duties &amp; Taxes</span>
+              <span className="font-mono font-medium tabular-nums text-slate-900 dark:text-slate-100">
                 {formatInr(financials.outputGst.total)}
               </span>
             </div>
-            <div className="flex justify-between pt-2 border-t border-slate-200 font-semibold text-slate-900">
-              <span>Net Working Capital & Owner Equity</span>
-              <span className="font-mono tabular-nums text-teal-800">
+            <div className="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-800 font-semibold text-slate-900 dark:text-slate-100">
+              <span>Net Working Capital &amp; Owner Equity</span>
+              <span className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
                 {formatInr(
                   financials.cashBankBalance +
                     financials.totalReceivables +
@@ -274,10 +283,10 @@ export function ReportsAnalyticsModule() {
       )}
 
       {reportTab === 'daybook' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Date</th>
                 <th className="py-3 px-3">Ref No</th>
                 <th className="py-3 px-3">Book / Type</th>
@@ -285,31 +294,39 @@ export function ReportsAnalyticsModule() {
                 <th className="py-3 px-4 text-right">Amount</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {workspace.invoices.map((i) => (
-                <tr key={`inv-${i.id}`}>
-                  <td className="py-2.5 px-4 font-mono text-xs text-slate-600">{i.invoiceDate}</td>
-                  <td className="py-2.5 px-3 font-mono text-xs font-medium text-slate-900">
+                <tr key={`inv-${i.id}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                  <td className="py-2.5 px-4 font-mono text-xs text-slate-600 dark:text-slate-400">
+                    {i.invoiceDate}
+                  </td>
+                  <td className="py-2.5 px-3 font-mono text-xs font-medium text-slate-900 dark:text-slate-100">
                     {i.invoiceNo}
                   </td>
-                  <td className="py-2.5 px-3 text-xs text-slate-600">{i.docType}</td>
-                  <td className="py-2.5 px-3 text-xs text-slate-800">{i.customerName}</td>
-                  <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold tabular-nums">
+                  <td className="py-2.5 px-3 text-xs text-slate-600 dark:text-slate-400">{i.docType}</td>
+                  <td className="py-2.5 px-3 text-xs text-slate-800 dark:text-slate-200">
+                    {i.customerName}
+                  </td>
+                  <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {formatInr(i.grandTotal)}
                   </td>
                 </tr>
               ))}
               {workspace.vouchers.map((v) => (
-                <tr key={`v-${v.id}`}>
-                  <td className="py-2.5 px-4 font-mono text-xs text-slate-600">{v.voucherDate}</td>
-                  <td className="py-2.5 px-3 font-mono text-xs font-medium text-slate-900">
+                <tr key={`v-${v.id}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                  <td className="py-2.5 px-4 font-mono text-xs text-slate-600 dark:text-slate-400">
+                    {v.voucherDate}
+                  </td>
+                  <td className="py-2.5 px-3 font-mono text-xs font-medium text-slate-900 dark:text-slate-100">
                     {v.voucherNo}
                   </td>
-                  <td className="py-2.5 px-3 text-xs text-slate-600">{v.voucherType}</td>
-                  <td className="py-2.5 px-3 text-xs text-slate-800">
+                  <td className="py-2.5 px-3 text-xs text-slate-600 dark:text-slate-400">
+                    {v.voucherType}
+                  </td>
+                  <td className="py-2.5 px-3 text-xs text-slate-800 dark:text-slate-200">
                     {v.debitLedgerName} / {v.creditLedgerName}
                   </td>
-                  <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold tabular-nums">
+                  <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {formatInr(v.amount)}
                   </td>
                 </tr>
@@ -320,10 +337,10 @@ export function ReportsAnalyticsModule() {
       )}
 
       {reportTab === 'stock' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Item SKU</th>
                 <th className="py-3 px-3">Category · HSN</th>
                 <th className="py-3 px-3 text-right">Total Qty</th>
@@ -331,24 +348,26 @@ export function ReportsAnalyticsModule() {
                 <th className="py-3 px-4 text-right">Valuation (FIFO)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {workspace.items.map((it) => {
                 const batches = workspace.batches.filter((b) => b.itemId === it.id);
                 const qty = batches.reduce((s, b) => s + b.qtyOnHand, 0);
                 const val = batches.reduce((s, b) => s + b.qtyOnHand * b.costRate, 0);
                 return (
-                  <tr key={it.id}>
-                    <td className="py-2.5 px-4 font-medium text-slate-900">{it.name}</td>
-                    <td className="py-2.5 px-3 font-mono text-xs text-slate-500">
+                  <tr key={it.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                    <td className="py-2.5 px-4 font-medium text-slate-900 dark:text-slate-100">
+                      {it.name}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-xs text-slate-500 dark:text-slate-400">
                       {it.category} · {it.hsnCode}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums">
+                    <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                       {qty} {it.uqc}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums">
+                    <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                       ₹{it.purchaseRate.toFixed(2)}
                     </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold tabular-nums">
+                    <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                       {formatInr(val)}
                     </td>
                   </tr>
@@ -360,10 +379,10 @@ export function ReportsAnalyticsModule() {
       )}
 
       {reportTab === 'party' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Customer Party</th>
                 <th className="py-3 px-3 text-right">Bills</th>
                 <th className="py-3 px-3 text-right">Taxable Value</th>
@@ -371,18 +390,20 @@ export function ReportsAnalyticsModule() {
                 <th className="py-3 px-4 text-right">Net Sales</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {Object.entries(partySales).map(([name, st]) => (
-                <tr key={name}>
-                  <td className="py-2.5 px-4 font-medium text-slate-900">{name}</td>
-                  <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums">{st.bills}</td>
-                  <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums">
+                <tr key={name} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                  <td className="py-2.5 px-4 font-medium text-slate-900 dark:text-slate-100">{name}</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
+                    {st.bills}
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                     {formatInr(st.taxable)}
                   </td>
-                  <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums">
+                  <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                     {formatInr(st.gst)}
                   </td>
-                  <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold tabular-nums">
+                  <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {formatInr(st.total)}
                   </td>
                 </tr>
@@ -401,11 +422,20 @@ export function ControlRoomModule() {
     workspace.companies.find((c) => c.id === workspace.activeCompanyId) ||
     workspace.companies[0];
 
-  const [tab, setTab] = useState<'config' | 'counters' | 'rbac' | 'template' | 'utilities'>(
-    'config'
-  );
+  const [tab, setTab] = useState<
+    'config' | 'coupons' | 'counters' | 'rbac' | 'template' | 'utilities'
+  >('config');
   const [draftPatch, setDraftPatch] = useState<Partial<ControlRoomConfig>>({});
   const draft: ControlRoomConfig = { ...workspace.controlRoom, ...draftPatch };
+
+  // Inline Promo Coupon creation form
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDesc, setCouponDesc] = useState('');
+  const [couponType, setCouponType] = useState<'FLAT' | 'PERCENT'>('FLAT');
+  const [couponVal, setCouponVal] = useState('50');
+  const [couponMinBill, setCouponMinBill] = useState('500');
+  const [couponMaxDisc, setCouponMaxDisc] = useState('150');
+  const [couponValidTill, setCouponValidTill] = useState('2027-03-31');
 
   const setDraft = (next: ControlRoomConfig) => {
     setDraftPatch(next);
@@ -419,6 +449,33 @@ export function ControlRoomModule() {
       'Control Room configuration saved and applied across POS counters.'
     );
     if (ok) setDraftPatch({});
+  };
+
+  const handleCreateCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanCode = couponCode.trim().toUpperCase().replace(/\s+/g, '');
+    if (!cleanCode || Number(couponVal) <= 0) {
+      showToast('Enter a valid coupon code and discount value.', 'error');
+      return;
+    }
+    const ok = await dispatchAction(
+      'CREATE_COUPON',
+      {
+        code: cleanCode,
+        description: couponDesc.trim() || `${cleanCode} Store Promotion`,
+        discountType: couponType,
+        discountValue: Number(couponVal),
+        minBillAmount: Number(couponMinBill) || 0,
+        maxDiscount: Number(couponMaxDisc) || 0,
+        validTill: couponValidTill,
+        active: true,
+      },
+      `Promo coupon ${cleanCode} created and enabled in Retail POS.`
+    );
+    if (ok) {
+      setCouponCode('');
+      setCouponDesc('');
+    }
   };
 
   const handleRebuildBooks = async () => {
@@ -443,11 +500,11 @@ export function ControlRoomModule() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Settings &gt; Control Room Configuration
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            POS Billing Controls · Multi-Counter & Day-End Cash Summary · Financial Year Lock · RBAC · Invoice Designer · Utilities
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            POS Billing &amp; UPI QR Controls · Promo Coupons · Multi-Counter Cash · RBAC · Invoice Designer · Utilities
           </p>
         </div>
         {activeCompany && (
@@ -462,10 +519,10 @@ export function ControlRoomModule() {
                 }.`
               )
             }
-            className={`inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-xs font-semibold whitespace-nowrap ${
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-xs font-semibold whitespace-nowrap cursor-pointer ${
               activeCompany.fyLocked
-                ? 'border-red-300 bg-red-50 text-red-800'
-                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                ? 'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300'
+                : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
             {activeCompany.fyLocked ? (
@@ -484,9 +541,10 @@ export function ControlRoomModule() {
       </div>
 
       {/* Sub-Tabs */}
-      <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white p-1.5">
+      <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5">
         {[
           { id: 'config', label: 'Control Room Rules' },
+          { id: 'coupons', label: `Promo Coupons (${workspace.promoCoupons.length})` },
           { id: 'counters', label: 'Multi-Counter & Day-End Cash' },
           { id: 'rbac', label: 'User Access & RBAC' },
           { id: 'template', label: 'Invoice Template Designer' },
@@ -496,10 +554,10 @@ export function ControlRoomModule() {
             key={t.id}
             type="button"
             onClick={() => setTab(t.id as typeof tab)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
+            className={`rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap cursor-pointer ${
               tab === t.id
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
+                ? 'bg-emerald-700 text-white dark:bg-emerald-600'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             {t.label}
@@ -511,7 +569,7 @@ export function ControlRoomModule() {
       {tab === 'config' && (
         <form
           onSubmit={handleSaveConfig}
-          className="rounded-lg border border-slate-200 bg-white p-5 space-y-5"
+          className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-5"
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
@@ -548,25 +606,86 @@ export function ControlRoomModule() {
             ].map((item) => (
               <label
                 key={item.key}
-                className="flex items-start justify-between gap-4 rounded-md border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50/70"
+                className="flex items-start justify-between gap-4 rounded-md border border-slate-200 dark:border-slate-800 p-3.5 cursor-pointer hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
               >
                 <div>
-                  <div className="text-sm font-semibold text-slate-900">{item.title}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{item.desc}</div>
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {item.title}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {item.desc}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={draft[item.key]}
                   onChange={(e) => setDraft({ ...draft, [item.key]: e.target.checked })}
-                  className="mt-1 h-4 w-4 accent-teal-700"
+                  className="mt-1 h-4 w-4 accent-emerald-700"
                 />
               </label>
             ))}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+          {/* Supermarket UPI QR & Weighing Scale Barcode Settings */}
+          <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+              <QrCode className="h-4 w-4" />
+              <span>Supermarket UPI QR &amp; Weighing Scale Barcode Settings</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="cr-upi"
+                  className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+                >
+                  Store Merchant UPI VPA (Dynamic Payment QR)
+                </label>
+                <input
+                  id="cr-upi"
+                  type="text"
+                  value={draft.upiVpa || ''}
+                  onChange={(e) => setDraft({ ...draft, upiVpa: e.target.value })}
+                  placeholder="freshmart@upi"
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
+                />
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Used on POS Checkout QR, Customer Display, and printed receipts.
+                </p>
+              </div>
+              <div>
+                <label
+                  htmlFor="cr-prefix"
+                  className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+                >
+                  Weighted Scale EAN-13 Prefix (2 digits)
+                </label>
+                <input
+                  id="cr-prefix"
+                  type="text"
+                  maxLength={2}
+                  value={draft.weightedBarcodePrefix || '21'}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      weightedBarcodePrefix: e.target.value.replace(/\D/g, '').slice(0, 2) || '21',
+                    })
+                  }
+                  placeholder="21"
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
+                />
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Format: [Prefix 2][PLU 5][Weight in grams 5][Check 1] e.g. 210101012500 = 1.25 kg.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div>
-              <label htmlFor="cr-earn" className="block text-xs font-medium text-slate-700 mb-1">
+              <label
+                htmlFor="cr-earn"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+              >
                 Loyalty Earn Rate (Points per ₹100)
               </label>
               <input
@@ -578,11 +697,14 @@ export function ControlRoomModule() {
                 onChange={(e) =>
                   setDraft({ ...draft, loyaltyEarnPer100: Number(e.target.value) || 0 })
                 }
-                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-mono"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
               />
             </div>
             <div>
-              <label htmlFor="cr-val" className="block text-xs font-medium text-slate-700 mb-1">
+              <label
+                htmlFor="cr-val"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+              >
                 1 Loyalty Point Value (₹)
               </label>
               <input
@@ -594,11 +716,14 @@ export function ControlRoomModule() {
                 onChange={(e) =>
                   setDraft({ ...draft, loyaltyPointValue: Number(e.target.value) || 1 })
                 }
-                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-mono"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
               />
             </div>
             <div>
-              <label htmlFor="cr-exp" className="block text-xs font-medium text-slate-700 mb-1">
+              <label
+                htmlFor="cr-exp"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+              >
                 Near-Expiry Alert Threshold (Days)
               </label>
               <input
@@ -610,7 +735,7 @@ export function ControlRoomModule() {
                 onChange={(e) =>
                   setDraft({ ...draft, nearExpiryAlertDays: Number(e.target.value) || 90 })
                 }
-                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-mono"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
               />
             </div>
           </div>
@@ -618,7 +743,7 @@ export function ControlRoomModule() {
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800"
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 cursor-pointer"
             >
               <Save className="h-4 w-4" />
               <span>Save Control Room Configuration</span>
@@ -627,41 +752,223 @@ export function ControlRoomModule() {
         </form>
       )}
 
-      {/* Tab 2: Multi-Counter Control & Day-End Cash Summary */}
+      {/* Tab 2: Promo Coupons Manager */}
+      {tab === 'coupons' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <section className="lg:col-span-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
+            <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2 font-semibold text-sm text-slate-900 dark:text-slate-100">
+                <Tag className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+                <span>Active &amp; Scheduled Supermarket Coupons</span>
+              </div>
+              <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                {workspace.promoCoupons.filter((c) => c.active).length} active
+              </span>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <th className="py-2.5 px-4">Code &amp; Description</th>
+                  <th className="py-2.5 px-3">Discount</th>
+                  <th className="py-2.5 px-3 text-right">Min Bill</th>
+                  <th className="py-2.5 px-3">Valid Till</th>
+                  <th className="py-2.5 px-4 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {workspace.promoCoupons.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                    <td className="py-3 px-4">
+                      <div className="font-mono text-xs font-bold text-emerald-800 dark:text-emerald-400">
+                        {c.code}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        {c.description}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                      {c.discountType === 'FLAT'
+                        ? `₹${c.discountValue} OFF`
+                        : `${c.discountValue}% (Cap ₹${c.maxDiscount})`}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-slate-700 dark:text-slate-300">
+                      ₹{c.minBillAmount.toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-3 px-3 font-mono text-xs text-slate-600 dark:text-slate-400">
+                      {c.validTill}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void dispatchAction(
+                            'TOGGLE_COUPON',
+                            { id: c.id, active: !c.active },
+                            `Coupon ${c.code} ${!c.active ? 'activated' : 'paused'}.`
+                          )
+                        }
+                        className={`rounded-md border px-2.5 py-1 text-xs font-semibold cursor-pointer ${
+                          c.active
+                            ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
+                            : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        {c.active ? 'Active' : 'Paused'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+
+          <form
+            onSubmit={handleCreateCoupon}
+            className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-3.5"
+          >
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+              <Plus className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+              <span>Create Supermarket Coupon</span>
+            </h2>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Coupon Code
+              </label>
+              <input
+                type="text"
+                required
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                placeholder="e.g. DIWALI75"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono uppercase text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Campaign Description
+              </label>
+              <input
+                type="text"
+                value={couponDesc}
+                onChange={(e) => setCouponDesc(e.target.value)}
+                placeholder="Flat ₹75 off on grocery basket"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Discount Type
+                </label>
+                <select
+                  value={couponType}
+                  onChange={(e) => setCouponType(e.target.value as 'FLAT' | 'PERCENT')}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-sm text-slate-900 dark:text-slate-100"
+                >
+                  <option value="FLAT">Flat ₹ Off</option>
+                  <option value="PERCENT">Percent % Off</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  {couponType === 'FLAT' ? 'Amount (₹)' : 'Percentage (%)'}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  value={couponVal}
+                  onChange={(e) => setCouponVal(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Min Bill (₹)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={couponMinBill}
+                  onChange={(e) => setCouponMinBill(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Max Cap (₹)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={couponMaxDisc}
+                  onChange={(e) => setCouponMaxDisc(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Valid Till Date
+              </label>
+              <input
+                type="date"
+                value={couponValidTill}
+                onChange={(e) => setCouponValidTill(e.target.value)}
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-mono text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full rounded-md bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 cursor-pointer"
+            >
+              Add Promo Coupon
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Tab 3: Multi-Counter Control & Day-End Cash Summary */}
       {tab === 'counters' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
                 <th className="py-3 px-4">Counter / Operator</th>
                 <th className="py-3 px-3 text-right">Opening Cash</th>
                 <th className="py-3 px-3 text-right">Cash Sales</th>
                 <th className="py-3 px-3 text-right">UPI + Card + Wallet</th>
+                <th className="py-3 px-3 text-right">Udhaar (Credit)</th>
                 <th className="py-3 px-3 text-right">Expected Drawer</th>
                 <th className="py-3 px-4 text-right">Shift Control</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {workspace.posCounters.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50/70">
+                <tr key={c.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                   <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-900">
+                    <div className="font-semibold text-slate-900 dark:text-slate-100">
                       {c.counterCode} · {c.counterName}
                     </div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
                       {c.operatorName} ({c.operatorRole}) · Status: {c.status}
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums">
+                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                     {formatInr(c.openingCash)}
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums">
+                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                     {formatInr(c.cashSales)}
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums">
+                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
                     {formatInr(c.upiSales + c.cardSales + c.walletSales)}
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-xs font-bold text-teal-800 tabular-nums">
+                  <td className="py-3 px-3 text-right font-mono text-xs tabular-nums text-amber-700 dark:text-amber-400">
+                    {formatInr(c.creditSales || 0)}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
                     {formatInr(c.openingCash + c.cashSales)}
                   </td>
                   <td className="py-3 px-4 text-right">
@@ -680,10 +987,10 @@ export function ControlRoomModule() {
                           }.`
                         )
                       }
-                      className={`rounded-md border px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
+                      className={`rounded-md border px-3 py-1.5 text-xs font-medium whitespace-nowrap cursor-pointer ${
                         c.status === 'OPEN'
-                          ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                          : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                          ? 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100'
+                          : 'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100'
                       }`}
                     >
                       {c.status === 'OPEN' ? 'Close Day-End Shift' : 'Reopen Counter'}
@@ -696,13 +1003,13 @@ export function ControlRoomModule() {
         </section>
       )}
 
-      {/* Tab 3: RBAC */}
+      {/* Tab 4: RBAC */}
       {tab === 'rbac' && (
-        <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600">
-                <th className="py-3 px-4">Operator & Email</th>
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
+                <th className="py-3 px-4">Operator &amp; Email</th>
                 <th className="py-3 px-3">Role</th>
                 <th className="py-3 px-3">Assigned Counters</th>
                 <th className="py-3 px-3">Control Room</th>
@@ -710,24 +1017,26 @@ export function ControlRoomModule() {
                 <th className="py-3 px-4">FY Lock</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {workspace.operators.map((op) => (
-                <tr key={op.id}>
+                <tr key={op.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                   <td className="py-3 px-4">
-                    <div className="font-medium text-slate-900">{op.name}</div>
-                    <div className="text-xs text-slate-500">{op.email}</div>
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{op.name}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{op.email}</div>
                   </td>
-                  <td className="py-3 px-3 text-xs font-semibold text-slate-800">{op.role}</td>
-                  <td className="py-3 px-3 font-mono text-xs text-slate-600">
+                  <td className="py-3 px-3 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    {op.role}
+                  </td>
+                  <td className="py-3 px-3 font-mono text-xs text-slate-600 dark:text-slate-400">
                     {op.countersAllowed.join(', ')}
                   </td>
-                  <td className="py-3 px-3 text-xs">
+                  <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300">
                     {op.canEditControlRoom ? 'Allowed' : 'Restricted'}
                   </td>
-                  <td className="py-3 px-3 text-xs">
+                  <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300">
                     {op.canApproveReturns ? 'Allowed' : 'Restricted'}
                   </td>
-                  <td className="py-3 px-4 text-xs">
+                  <td className="py-3 px-4 text-xs text-slate-700 dark:text-slate-300">
                     {op.canLockFy ? 'Allowed' : 'Restricted'}
                   </td>
                 </tr>
@@ -737,29 +1046,35 @@ export function ControlRoomModule() {
         </section>
       )}
 
-      {/* Tab 4: Invoice Template Designer */}
+      {/* Tab 5: Invoice Template Designer */}
       {tab === 'template' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <form
             onSubmit={handleSaveConfig}
-            className="rounded-lg border border-slate-200 bg-white p-5 space-y-4"
+            className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-4"
           >
-            <h2 className="text-base font-semibold text-slate-900">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
               Custom Invoice Template Settings
             </h2>
             <div>
-              <label htmlFor="tpl-title" className="block text-xs font-medium text-slate-700 mb-1">
+              <label
+                htmlFor="tpl-title"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+              >
                 Invoice Header Title
               </label>
               <input
                 id="tpl-title"
                 value={draft.invoiceHeaderTitle}
                 onChange={(e) => setDraft({ ...draft, invoiceHeaderTitle: e.target.value })}
-                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100"
               />
             </div>
             <div>
-              <label htmlFor="tpl-paper" className="block text-xs font-medium text-slate-700 mb-1">
+              <label
+                htmlFor="tpl-paper"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+              >
                 Default Print Format
               </label>
               <select
@@ -771,7 +1086,7 @@ export function ControlRoomModule() {
                     thermalPaperWidth: e.target.value as '58mm' | '80mm' | 'A4',
                   })
                 }
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100"
               >
                 <option value="80mm">80mm Thermal POS Receipt</option>
                 <option value="58mm">58mm Compact Thermal</option>
@@ -779,34 +1094,39 @@ export function ControlRoomModule() {
               </select>
             </div>
             <div>
-              <label htmlFor="tpl-terms" className="block text-xs font-medium text-slate-700 mb-1">
-                Footer Terms & Declaration
+              <label
+                htmlFor="tpl-terms"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+              >
+                Footer Terms &amp; Declaration
               </label>
               <textarea
                 id="tpl-terms"
                 rows={3}
                 value={draft.invoiceTerms}
                 onChange={(e) => setDraft({ ...draft, invoiceTerms: e.target.value })}
-                className="w-full rounded-md border border-slate-300 p-2.5 text-xs"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 text-xs text-slate-900 dark:text-slate-100"
               />
             </div>
             <button
               type="submit"
-              className="rounded-md bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800"
+              className="rounded-md bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 cursor-pointer"
             >
               Save Template Design
             </button>
           </form>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-5">
-            <h2 className="text-sm font-semibold text-slate-900 mb-3">
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
               Live Print Preview ({draft.thermalPaperWidth})
             </h2>
-            <div className="mx-auto max-w-sm rounded border border-dashed border-slate-300 bg-slate-50 p-4 font-mono text-xs space-y-2">
+            <div className="mx-auto max-w-sm rounded border border-dashed border-slate-300 bg-white p-4 font-mono text-xs text-slate-900 space-y-2">
               <div className="text-center border-b border-dashed border-slate-300 pb-2">
                 <div className="font-bold text-slate-900">{draft.invoiceHeaderTitle}</div>
                 <div className="font-semibold text-slate-700">{activeCompany?.name}</div>
-                <div className="text-[10px] text-slate-500">GSTIN: {activeCompany?.gstin}</div>
+                <div className="text-[10px] text-slate-500">
+                  GSTIN: {activeCompany?.gstin} · UPI: {draft.upiVpa || 'freshmart@upi'}
+                </div>
               </div>
               <div className="flex justify-between text-[11px] text-slate-600">
                 <span>India Gate Basmati 5kg (×1) · MRP ₹685</span>
@@ -831,45 +1151,45 @@ export function ControlRoomModule() {
         </div>
       )}
 
-      {/* Tab 5: Utilities */}
+      {/* Tab 6: Utilities */}
       {tab === 'utilities' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
-            <div className="flex items-center gap-2 text-slate-900 font-semibold text-base">
-              <RefreshCcw className="h-4 w-4 text-teal-700" />
+          <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-3">
+            <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-semibold text-base">
+              <RefreshCcw className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
               <h2>Rebuilding Books (Re-Indexing Utility)</h2>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
               Verifies double-entry debit/credit parity, recalculates batch-wise FIFO stock quantities across godowns, and validates customer loyalty point ledgers.
             </p>
-            <div className="text-xs font-mono text-slate-500">
+            <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
               Last Rebuilt: {workspace.controlRoom.lastBooksRebuildAt}
             </div>
             <button
               type="button"
               onClick={() => void handleRebuildBooks()}
-              className="rounded-md bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800"
+              className="rounded-md bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 cursor-pointer"
             >
               Run Rebuild Books Now
             </button>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
-            <div className="flex items-center gap-2 text-slate-900 font-semibold text-base">
-              <DatabaseBackup className="h-4 w-4 text-teal-700" />
-              <h2>Cloud Backup & Multi-Currency Setup</h2>
+          <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-3">
+            <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-semibold text-base">
+              <DatabaseBackup className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+              <h2>Cloud Backup &amp; Multi-Currency Setup</h2>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
               Create an instant encrypted backup of your active company books, GST registers, and POS counter tallies.
             </p>
-            <div className="text-xs font-mono text-slate-500">
+            <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
               Last Backup: {workspace.controlRoom.lastBackupAt} · Currency: {activeCompany?.currency || 'INR'}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => void handleCloudBackup()}
-                className="rounded-md bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800 cursor-pointer"
+                className="rounded-md bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 cursor-pointer"
               >
                 Create Cloud Backup
               </button>
@@ -882,7 +1202,7 @@ export function ControlRoomModule() {
                     'Fresh Indian Supermarket catalog, loose-weight produce, and checkout lanes loaded.'
                   )
                 }
-                className="inline-flex items-center gap-1 rounded-md border border-teal-300 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-900 hover:bg-teal-100 cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-900 dark:text-emerald-300 hover:bg-emerald-100 cursor-pointer"
               >
                 <RefreshCcw className="h-3.5 w-3.5" />
                 <span>Load Fresh Supermarket Catalog</span>
@@ -892,7 +1212,7 @@ export function ControlRoomModule() {
                 onClick={() =>
                   showToast('REST & Webhook API integration keys are managed via server secrets.', 'info')
                 }
-                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <ShieldCheck className="h-3.5 w-3.5" />
                 <span>API Integrations</span>

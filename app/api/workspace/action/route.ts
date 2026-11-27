@@ -18,6 +18,7 @@ import {
   items,
   ledgers,
   posCounters,
+  promoCoupons,
   purchases,
   schemes,
   shiftHandovers,
@@ -25,7 +26,7 @@ import {
   users,
   vouchers,
 } from '../../../../src/db/schema.ts';
-import { calculateShiftVariance, round3 } from '../../../../src/lib/erp-engine.ts';
+import { calculateShiftVariance, round2, round3 } from '../../../../src/lib/erp-engine.ts';
 
 const actionSchema = z.object({
   companyId: z.number().int().positive(),
@@ -35,6 +36,9 @@ const actionSchema = z.object({
     'CREATE_BOM',
     'CREATE_SCHEME',
     'TOGGLE_SCHEME',
+    'CREATE_COUPON',
+    'TOGGLE_COUPON',
+    'SETTLE_UDHAAR',
     'CREATE_INVOICE',
     'UPDATE_INVOICE_COMPLIANCE',
     'CREATE_PURCHASE',
@@ -185,6 +189,71 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      case 'CREATE_COUPON': {
+        const code = String(payload.code || '').trim().toUpperCase();
+        if (!code) {
+          return NextResponse.json({ error: 'Coupon code is required.' }, { status: 400 });
+        }
+        await db.insert(promoCoupons).values({
+          companyId,
+          code,
+          description: String(payload.description || `${code} supermarket offer`),
+          discountType: payload.discountType === 'PERCENT' ? 'PERCENT' : 'FLAT',
+          discountValue: Number(payload.discountValue || 0),
+          minBillAmount: Number(payload.minBillAmount || 0),
+          maxDiscount: Number(payload.maxDiscount || 500),
+          validTill: String(payload.validTill || '2026-12-31'),
+          active: true,
+        });
+        break;
+      }
+
+      case 'TOGGLE_COUPON': {
+        await db
+          .update(promoCoupons)
+          .set({ active: Boolean(payload.active) })
+          .where(and(eq(promoCoupons.id, Number(payload.id)), eq(promoCoupons.companyId, companyId)));
+        break;
+      }
+
+      case 'SETTLE_UDHAAR': {
+        const ledgerId = Number(payload.ledgerId || 0);
+        const amount = round2(Math.max(0, Number(payload.amount || 0)));
+        if (!ledgerId || amount <= 0) {
+          return NextResponse.json({ error: 'Valid customer and settlement amount required.' }, { status: 400 });
+        }
+        const [cust] = await db
+          .select()
+          .from(ledgers)
+          .where(and(eq(ledgers.id, ledgerId), eq(ledgers.companyId, companyId)));
+        if (!cust) {
+          return NextResponse.json({ error: 'Customer ledger not found.' }, { status: 404 });
+        }
+        const nextBal = round2(Math.max(0, cust.currentBalance - amount));
+        await db
+          .update(ledgers)
+          .set({ currentBalance: nextBal })
+          .where(eq(ledgers.id, cust.id));
+
+        const mode = String(payload.paymentMode || 'UPI');
+        await db.insert(vouchers).values({
+          companyId,
+          voucherNo: `KHATA-${Date.now().toString().slice(-5)}`,
+          voucherType: 'Receipt',
+          voucherDate: String(payload.voucherDate || '2026-11-26'),
+          debitLedgerName: mode === 'Cash' ? 'Cash-in-Hand (Store Vault)' : 'HDFC Bank Current A/c',
+          creditLedgerName: cust.name,
+          amount,
+          narration: String(payload.narration || `Udhaar Khata settlement received via ${mode}`),
+          referenceInvoiceNo: '',
+          paymentMode: mode,
+          chequeNo: '',
+          pdcDate: '',
+          reconciled: mode !== 'Cash',
+        });
+        break;
+      }
+
       case 'CREATE_INVOICE': {
         const lineItems = Array.isArray(payload.items) ? payload.items : [];
         const payments = Array.isArray(payload.payments) ? payload.payments : [];
@@ -212,6 +281,8 @@ export async function POST(req: NextRequest) {
           grandTotal: Number(payload.grandTotal || 0),
           loyaltyEarned,
           loyaltyRedeemed,
+          couponCode: String(payload.couponCode || ''),
+          couponDiscount: Number(payload.couponDiscount || 0),
           paymentModeSummary: String(payload.paymentModeSummary || 'Cash'),
           paymentsJson: JSON.stringify(payments),
           itemsJson: JSON.stringify(lineItems),
@@ -221,8 +292,13 @@ export async function POST(req: NextRequest) {
           createdByUid: session.user.uid,
         });
 
-        // Update customer loyalty points if applicable
-        if (ledgerId && (loyaltyEarned > 0 || loyaltyRedeemed > 0)) {
+        // Update customer loyalty points and Credit (Udhaar) receivable balance if applicable
+        const creditSplitAmount = round2(
+          payments
+            .filter((p: { mode?: string }) => p.mode === 'Credit')
+            .reduce((sum: number, p: { amount?: number }) => sum + Number(p.amount || 0), 0)
+        );
+        if (ledgerId && (loyaltyEarned > 0 || loyaltyRedeemed > 0 || creditSplitAmount > 0)) {
           const [cust] = await db
             .select()
             .from(ledgers)
@@ -232,6 +308,12 @@ export async function POST(req: NextRequest) {
               .update(ledgers)
               .set({
                 loyaltyPoints: Math.max(0, cust.loyaltyPoints - loyaltyRedeemed + loyaltyEarned),
+                ...(creditSplitAmount > 0
+                  ? {
+                      currentBalance: round2(cust.currentBalance + creditSplitAmount),
+                      balanceType: 'Dr',
+                    }
+                  : {}),
               })
               .where(eq(ledgers.id, cust.id));
           }
@@ -282,6 +364,7 @@ export async function POST(req: NextRequest) {
             let cardAdd = 0;
             let walletAdd = 0;
             let pdcAdd = 0;
+            let creditAdd = 0;
             for (const pay of payments) {
               const amt = Number(pay.amount || 0);
               if (pay.mode === 'Cash') cashAdd += amt;
@@ -289,6 +372,7 @@ export async function POST(req: NextRequest) {
               if (pay.mode === 'Card') cardAdd += amt;
               if (pay.mode === 'Wallet') walletAdd += amt;
               if (pay.mode === 'PDC') pdcAdd += amt;
+              if (pay.mode === 'Credit') creditAdd += amt;
             }
             await db
               .update(posCounters)
@@ -298,6 +382,7 @@ export async function POST(req: NextRequest) {
                 cardSales: counter.cardSales + cardAdd,
                 walletSales: counter.walletSales + walletAdd,
                 pdcSales: counter.pdcSales + pdcAdd,
+                creditSales: (counter.creditSales || 0) + creditAdd,
               })
               .where(eq(posCounters.id, counter.id));
           }
@@ -495,9 +580,13 @@ export async function POST(req: NextRequest) {
             requireBatchOnBilling: Boolean(payload.requireBatchOnBilling),
             nearExpiryAlertDays: Number(payload.nearExpiryAlertDays ?? 90),
             eInvoiceAutoIrn: Boolean(payload.eInvoiceAutoIrn),
-            invoiceHeaderTitle: String(payload.invoiceHeaderTitle || 'TAX INVOICE / DIGITAL RETAIL BILL'),
+            invoiceHeaderTitle: String(payload.invoiceHeaderTitle || 'SUPERMARKET TAX INVOICE / RETAIL BILL'),
             invoiceTerms: String(payload.invoiceTerms || ''),
             thermalPaperWidth: String(payload.thermalPaperWidth || '80mm'),
+            ...(payload.upiVpa !== undefined ? { upiVpa: String(payload.upiVpa || 'freshmart@upi') } : {}),
+            ...(payload.weightedBarcodePrefix !== undefined
+              ? { weightedBarcodePrefix: String(payload.weightedBarcodePrefix || '21').slice(0, 2) }
+              : {}),
             ...(payload.lastBooksRebuildAt
               ? { lastBooksRebuildAt: String(payload.lastBooksRebuildAt) }
               : {}),

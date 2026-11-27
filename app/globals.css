@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --font-display: var(--font-display), "Plus Jakarta Sans", system-ui, sans-serif;
@@ -33,5 +34,10 @@
     margin: 0 auto !important;
     max-width: 100% !important;
     padding: 0 !important;
+  }
+
+  .barcode-label-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

@@ -61,10 +61,10 @@ export function CompanySetupPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           Company Onboarding &amp; Multi-Branch Setup
         </h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Switch active companies, inspect GSTIN/FY registrations, or onboard a new retail store or
           distribution branch.
         </p>
@@ -77,25 +77,27 @@ export function CompanySetupPage() {
           return (
             <div
               key={comp.id}
-              className={`rounded-lg border p-5 flex flex-col justify-between gap-4 bg-white ${
-                isActive ? 'border-teal-600 ring-1 ring-teal-600/20' : 'border-slate-200'
+              className={`rounded-lg border p-5 flex flex-col justify-between gap-4 bg-white dark:bg-[#111827] ${
+                isActive
+                  ? 'border-emerald-600 dark:border-emerald-500 ring-1 ring-emerald-600/20'
+                  : 'border-slate-200 dark:border-slate-800'
               }`}
             >
               <div>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <Building2 className="h-5 w-5 text-teal-700 shrink-0" />
-                    <h2 className="font-display text-base font-bold text-slate-900 truncate">
+                    <Building2 className="h-5 w-5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                    <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-100 truncate">
                       {comp.name}
                     </h2>
                   </div>
-                  <span className="text-xs font-medium text-teal-800 whitespace-nowrap shrink-0">
+                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 whitespace-nowrap shrink-0">
                     {isActive ? 'Active Workspace' : comp.currency}
                   </span>
                 </div>
-                <p className="mt-2 text-xs text-slate-600">{comp.branchName}</p>
-                <p className="mt-1 text-xs text-slate-500">{comp.address}</p>
-                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs font-mono text-slate-600">
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{comp.branchName}</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{comp.address}</p>
+                <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs font-mono text-slate-600 dark:text-slate-400">
                   <span>GSTIN: {comp.gstin}</span>
                   <span>·</span>
                   <span>
@@ -107,11 +109,11 @@ export function CompanySetupPage() {
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   {comp.fyLocked ? 'Books Locked' : 'Books Open'}
                 </span>
                 {isActive ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-teal-800">
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                     <Check className="h-3.5 w-3.5" />
                     <span>Currently Selected</span>
                   </span>
@@ -119,7 +121,7 @@ export function CompanySetupPage() {
                   <button
                     type="button"
                     onClick={() => void switchCompany(comp.id)}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                    className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                   >
                     Switch to This Branch
                   </button>
@@ -133,13 +135,13 @@ export function CompanySetupPage() {
       {/* Register New Company / Branch Form */}
       <form
         onSubmit={(e) => void handleCreateCompany(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
-        <div className="border-b border-slate-100 pb-4">
-          <h2 className="font-display text-base font-semibold text-slate-900">
+        <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
+          <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
             Onboard New Company or Retail Branch
           </h2>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Automatically initializes default Control Room configuration, POS-01 counter, and base
             cash/walk-in ledgers for the new branch.
           </p>
@@ -147,7 +149,10 @@ export function CompanySetupPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
-            <label htmlFor="comp-name" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-name"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               Company Legal Name
             </label>
             <input
@@ -157,12 +162,15 @@ export function CompanySetupPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Kaveri Fresh Supermart Pvt. Ltd."
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="comp-branch" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-branch"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               Branch / Store Name
             </label>
             <input
@@ -172,12 +180,15 @@ export function CompanySetupPage() {
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               placeholder="e.g. Anna Nagar Express Store"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="comp-gstin" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-gstin"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               15-Digit GSTIN
             </label>
             <input
@@ -189,19 +200,22 @@ export function CompanySetupPage() {
               value={gstin}
               onChange={(e) => setGstin(e.target.value.toUpperCase())}
               placeholder="33AABCK4412M1Z9"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm uppercase text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 font-mono text-sm uppercase text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="comp-state" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-state"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               GST State Jurisdiction
             </label>
             <select
               id="comp-state"
               value={stateCode}
               onChange={(e) => setStateCode(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             >
               {INDIAN_STATES.map((st) => (
                 <option key={st.code} value={st.code}>
@@ -212,14 +226,17 @@ export function CompanySetupPage() {
           </div>
 
           <div>
-            <label htmlFor="comp-fy" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-fy"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               Financial Year
             </label>
             <select
               id="comp-fy"
               value={financialYear}
               onChange={(e) => setFinancialYear(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             >
               <option value="2026-27">FY 2026-27</option>
               <option value="2025-26">FY 2025-26</option>
@@ -227,14 +244,17 @@ export function CompanySetupPage() {
           </div>
 
           <div>
-            <label htmlFor="comp-currency" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-currency"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               Base Currency
             </label>
             <select
               id="comp-currency"
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             >
               <option value="INR">INR (₹)</option>
               <option value="AED">AED (د.إ)</option>
@@ -243,7 +263,10 @@ export function CompanySetupPage() {
           </div>
 
           <div>
-            <label htmlFor="comp-phone" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-phone"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               Store Phone
             </label>
             <input
@@ -252,12 +275,15 @@ export function CompanySetupPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+91 98400 12345"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="comp-cash" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-cash"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               Initial POS-01 Cash Float (INR)
             </label>
             <input
@@ -265,12 +291,15 @@ export function CompanySetupPage() {
               type="number"
               value={openingCash}
               onChange={(e) => setOpeningCash(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 font-mono text-sm text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             />
           </div>
 
           <div className="sm:col-span-2 lg:col-span-3">
-            <label htmlFor="comp-address" className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="comp-address"
+              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+            >
               Registered Store Address
             </label>
             <input
@@ -280,7 +309,7 @@ export function CompanySetupPage() {
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Plot 14, 2nd Avenue, Anna Nagar, Chennai - 600040"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-emerald-600 focus:outline-none"
             />
           </div>
         </div>
@@ -289,7 +318,7 @@ export function CompanySetupPage() {
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-2 rounded-md bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             <span>{syncing ? 'Provisioning Branch...' : 'Create Company & Switch Workspace'}</span>

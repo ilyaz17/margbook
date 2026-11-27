@@ -125,6 +125,22 @@ export const schemes = pgTable('schemes', {
   active: boolean('active').notNull().default(true),
 });
 
+export const promoCoupons = pgTable('promo_coupons', {
+  id: serial('id').primaryKey(),
+  companyId: integer('company_id')
+    .references(() => companies.id, { onDelete: 'cascade' })
+    .notNull(),
+  code: text('code').notNull(),
+  description: text('description').notNull().default(''),
+  discountType: text('discount_type').notNull().default('FLAT'), // FLAT | PERCENT
+  discountValue: doublePrecision('discount_value').notNull().default(0),
+  minBillAmount: doublePrecision('min_bill_amount').notNull().default(0),
+  maxDiscount: doublePrecision('max_discount').notNull().default(500),
+  validTill: text('valid_till').notNull().default('2026-12-31'),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const invoices = pgTable('invoices', {
   id: serial('id').primaryKey(),
   companyId: integer('company_id')
@@ -147,6 +163,8 @@ export const invoices = pgTable('invoices', {
   grandTotal: doublePrecision('grand_total').notNull().default(0),
   loyaltyEarned: integer('loyalty_earned').notNull().default(0),
   loyaltyRedeemed: integer('loyalty_redeemed').notNull().default(0),
+  couponCode: text('coupon_code').notNull().default(''),
+  couponDiscount: doublePrecision('coupon_discount').notNull().default(0),
   paymentModeSummary: text('payment_mode_summary').notNull().default('Cash'),
   paymentsJson: text('payments_json').notNull().default('[]'),
   itemsJson: text('items_json').notNull().default('[]'),
@@ -244,6 +262,7 @@ export const posCounters = pgTable('pos_counters', {
   cardSales: doublePrecision('card_sales').notNull().default(0),
   walletSales: doublePrecision('wallet_sales').notNull().default(0),
   pdcSales: doublePrecision('pdc_sales').notNull().default(0),
+  creditSales: doublePrecision('credit_sales').notNull().default(0),
   status: text('status').notNull().default('OPEN'), // OPEN | CLOSED
   lastClosedAt: text('last_closed_at').notNull().default(''),
 });
@@ -272,6 +291,8 @@ export const controlRoomSettings = pgTable('control_room_settings', {
       'Fresh produce & dairy items cannot be returned after checkout. Packaged items exchangeable within 7 days with original bill.'
     ),
   thermalPaperWidth: text('thermal_paper_width').notNull().default('80mm'),
+  upiVpa: text('upi_vpa').notNull().default('freshmart@upi'),
+  weightedBarcodePrefix: text('weighted_barcode_prefix').notNull().default('21'),
   lastBooksRebuildAt: text('last_books_rebuild_at').notNull().default('2026-11-26 09:00'),
   lastBackupAt: text('last_backup_at').notNull().default('2026-11-26 18:30'),
 });
@@ -310,6 +331,7 @@ export const companiesRelations = relations(companies, ({ many, one }) => ({
   vouchers: many(vouchers),
   posCounters: many(posCounters),
   shiftHandovers: many(shiftHandovers),
+  promoCoupons: many(promoCoupons),
   controlRoom: one(controlRoomSettings, {
     fields: [companies.id],
     references: [controlRoomSettings.companyId],

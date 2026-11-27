@@ -16,6 +16,7 @@ export const MODULE_ROUTES: RouteMeta[] = [
   { id: 'sales', href: '/admin/sales', label: 'Sale & Billing', shortcut: 'F8', section: 'Operations' },
   { id: 'purchases', href: '/admin/purchases', label: 'Purchase Module', shortcut: 'F9', section: 'Operations' },
   { id: 'inventory', href: '/admin/inventory', label: 'Stock & Inventory', section: 'Operations' },
+  { id: 'barcodes', href: '/admin/barcodes', label: 'Barcode Studio', shortcut: 'Alt+B', section: 'Operations' },
   { id: 'accounting', href: '/admin/accounting', label: 'Accounting', shortcut: 'F6', section: 'Finance & Tax' },
   { id: 'banking', href: '/admin/banking', label: 'Banking & PDC', section: 'Finance & Tax' },
   { id: 'gst', href: '/admin/gst', label: 'GST & E-Invoice', section: 'Finance & Tax' },
@@ -37,6 +38,7 @@ export const MODULE_HREF_MAP: Record<ModuleId, string> = MODULE_ROUTES.reduce(
 export function resolveModuleFromPathname(pathname: string): ModuleId {
   if (pathname.startsWith('/admin/pos') || pathname.startsWith('/admin/bills')) return 'pos';
   if (pathname.startsWith('/admin/shifts')) return 'shifts';
+  if (pathname.startsWith('/admin/barcodes')) return 'barcodes';
   if (pathname.startsWith('/admin/masters') || pathname.startsWith('/admin/ledgers')) return 'masters';
   if (pathname.startsWith('/admin/sales')) return 'sales';
   if (pathname.startsWith('/admin/purchases')) return 'purchases';
@@ -56,6 +58,9 @@ export function resolveBreadcrumbFromPathname(pathname: string): {
   section: string;
   page: string;
 } {
+  if (pathname.startsWith('/admin/pos/customer-display')) {
+    return { section: 'Core', page: 'Customer Live Display' };
+  }
   if (pathname.startsWith('/admin/bills/')) {
     return { section: 'Core', page: 'Digital Bill & Print' };
   }

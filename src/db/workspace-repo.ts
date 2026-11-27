@@ -10,6 +10,7 @@ import {
   items,
   ledgers,
   posCounters,
+  promoCoupons,
   purchases,
   schemes,
   shiftHandovers,
@@ -174,6 +175,22 @@ export async function ensureCompanySeeded(ownerUid: string): Promise<number> {
       }))
     );
 
+    if (seed.promoCoupons.length > 0) {
+      await db.insert(promoCoupons).values(
+        seed.promoCoupons.map((c) => ({
+          companyId: primaryCompanyId,
+          code: c.code,
+          description: c.description,
+          discountType: c.discountType,
+          discountValue: c.discountValue,
+          minBillAmount: c.minBillAmount,
+          maxDiscount: c.maxDiscount,
+          validTill: c.validTill,
+          active: c.active,
+        }))
+      );
+    }
+
     await db.insert(invoices).values(
       seed.invoices.map((inv) => ({
         companyId: primaryCompanyId,
@@ -328,6 +345,8 @@ export async function ensureCompanySeeded(ownerUid: string): Promise<number> {
           invoiceHeaderTitle: seed.controlRoom.invoiceHeaderTitle,
           invoiceTerms: seed.controlRoom.invoiceTerms,
           thermalPaperWidth: seed.controlRoom.thermalPaperWidth,
+          upiVpa: seed.controlRoom.upiVpa,
+          weightedBarcodePrefix: seed.controlRoom.weightedBarcodePrefix,
           lastBooksRebuildAt: seed.controlRoom.lastBooksRebuildAt,
           lastBackupAt: seed.controlRoom.lastBackupAt,
         })
@@ -372,6 +391,7 @@ export async function loadWorkspaceForUser(
       batchRows,
       bomRows,
       schemeRows,
+      couponRows,
       invoiceRows,
       purchaseRows,
       voucherRows,
@@ -387,6 +407,7 @@ export async function loadWorkspaceForUser(
       db.select().from(itemBatches).where(eq(itemBatches.companyId, companyId)).orderBy(itemBatches.id),
       db.select().from(bomRecipes).where(eq(bomRecipes.companyId, companyId)).orderBy(bomRecipes.id),
       db.select().from(schemes).where(eq(schemes.companyId, companyId)).orderBy(schemes.id),
+      db.select().from(promoCoupons).where(eq(promoCoupons.companyId, companyId)).orderBy(promoCoupons.id),
       db
         .select()
         .from(invoices)
@@ -426,6 +447,28 @@ export async function loadWorkspaceForUser(
     ]);
 
     const fallbackSeed = createInitialWorkspaceData();
+
+    // Auto-seed default supermarket coupons for existing companies that don't have any yet
+    let hydratedCoupons = couponRows;
+    if (hydratedCoupons.length === 0 && fallbackSeed.promoCoupons.length > 0) {
+      hydratedCoupons = await db
+        .insert(promoCoupons)
+        .values(
+          fallbackSeed.promoCoupons.map((c) => ({
+            companyId,
+            code: c.code,
+            description: c.description,
+            discountType: c.discountType,
+            discountValue: c.discountValue,
+            minBillAmount: c.minBillAmount,
+            maxDiscount: c.maxDiscount,
+            validTill: c.validTill,
+            active: c.active,
+          }))
+        )
+        .returning();
+    }
+
     const cr = controlRows[0];
     const controlRoom: ControlRoomConfig = cr
       ? {
@@ -443,6 +486,8 @@ export async function loadWorkspaceForUser(
           invoiceHeaderTitle: cr.invoiceHeaderTitle,
           invoiceTerms: cr.invoiceTerms,
           thermalPaperWidth: (cr.thermalPaperWidth as '58mm' | '80mm' | 'A4') || '80mm',
+          upiVpa: cr.upiVpa || 'freshmart@upi',
+          weightedBarcodePrefix: cr.weightedBarcodePrefix || '21',
           lastBooksRebuildAt: cr.lastBooksRebuildAt,
           lastBackupAt: cr.lastBackupAt,
         }
@@ -534,6 +579,18 @@ export async function loadWorkspaceForUser(
         validTo: s.validTo,
         active: s.active,
       })),
+      promoCoupons: hydratedCoupons.map((c) => ({
+        id: c.id,
+        companyId: c.companyId,
+        code: c.code,
+        description: c.description,
+        discountType: (c.discountType as 'FLAT' | 'PERCENT') || 'FLAT',
+        discountValue: c.discountValue,
+        minBillAmount: c.minBillAmount,
+        maxDiscount: c.maxDiscount,
+        validTill: c.validTill,
+        active: c.active,
+      })),
       invoices: invoiceRows.map((inv) => ({
         id: inv.id,
         companyId: inv.companyId,
@@ -554,6 +611,8 @@ export async function loadWorkspaceForUser(
         grandTotal: inv.grandTotal,
         loyaltyEarned: inv.loyaltyEarned,
         loyaltyRedeemed: inv.loyaltyRedeemed,
+        couponCode: inv.couponCode || '',
+        couponDiscount: inv.couponDiscount || 0,
         paymentModeSummary: inv.paymentModeSummary,
         payments: safeJsonParse<PaymentSplit[]>(inv.paymentsJson, []),
         items: safeJsonParse<InvoiceLineItem[]>(inv.itemsJson, []),
@@ -630,6 +689,7 @@ export async function loadWorkspaceForUser(
         cardSales: pc.cardSales,
         walletSales: pc.walletSales,
         pdcSales: pc.pdcSales,
+        creditSales: pc.creditSales || 0,
         status: (pc.status as 'OPEN' | 'CLOSED') || 'OPEN',
         lastClosedAt: pc.lastClosedAt,
       })),
@@ -692,6 +752,7 @@ export async function resetCompanyToSupermarket(
     await db.delete(ledgers).where(eq(ledgers.companyId, companyId));
     await db.delete(bomRecipes).where(eq(bomRecipes.companyId, companyId));
     await db.delete(schemes).where(eq(schemes.companyId, companyId));
+    await db.delete(promoCoupons).where(eq(promoCoupons.companyId, companyId));
     await db.delete(invoices).where(eq(invoices.companyId, companyId));
     await db.delete(purchases).where(eq(purchases.companyId, companyId));
     await db.delete(vouchers).where(eq(vouchers.companyId, companyId));
@@ -801,6 +862,22 @@ export async function resetCompanyToSupermarket(
         active: s.active,
       }))
     );
+
+    if (seed.promoCoupons.length > 0) {
+      await db.insert(promoCoupons).values(
+        seed.promoCoupons.map((c) => ({
+          companyId,
+          code: c.code,
+          description: c.description,
+          discountType: c.discountType,
+          discountValue: c.discountValue,
+          minBillAmount: c.minBillAmount,
+          maxDiscount: c.maxDiscount,
+          validTill: c.validTill,
+          active: c.active,
+        }))
+      );
+    }
 
     await db.insert(invoices).values(
       seed.invoices.map((inv) => ({
@@ -945,6 +1022,8 @@ export async function resetCompanyToSupermarket(
         nearExpiryAlertDays: seed.controlRoom.nearExpiryAlertDays,
         invoiceHeaderTitle: seed.controlRoom.invoiceHeaderTitle,
         invoiceTerms: seed.controlRoom.invoiceTerms,
+        upiVpa: seed.controlRoom.upiVpa,
+        weightedBarcodePrefix: seed.controlRoom.weightedBarcodePrefix,
       })
       .where(eq(controlRoomSettings.companyId, companyId));
   } catch (error) {

@@ -4,35 +4,53 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  Barcode,
+  Camera,
+  CameraOff,
   CreditCard,
   History,
   Minus,
+  Monitor,
   PauseCircle,
   PlayCircle,
   Plus,
+  QrCode,
+  RotateCcw,
   Scale,
   ScanBarcode,
   Search,
   Sparkles,
+  Tag,
   Trash2,
+  Volume2,
+  VolumeX,
   Wallet,
   X,
 } from 'lucide-react';
 import {
+  broadcastCustomerDisplay,
+  playCheckoutBeep,
+} from '../lib/barcode-utils';
+import {
   calculateInvoiceTotals,
+  evaluatePromoCoupon,
   generateDeterministicIrn,
   parseBarcodeOrPluInput,
   round2,
   round3,
   validateMultiPayments,
+  validateUdhaarLimit,
   type RawCartLine,
 } from '../lib/erp-engine';
 import type {
   HeldCart,
   InventoryItem,
+  InvoiceRecord,
   PaymentMode,
   PaymentSplit,
+  PromoCoupon,
 } from '../types/erp';
+import { UpiQrCodeSvg } from './QrAndBarcodeWidgets';
 import { useMargBooks } from './MargBooksContext';
 
 function formatInr(n: number) {
@@ -57,6 +75,8 @@ const QUICK_WEIGHT_PRESETS = [
   { label: '2 kg', kg: 2 },
 ];
 
+const INDIAN_CASH_NOTES = [50, 100, 200, 500, 2000];
+
 export function RetailPosModule() {
   const router = useRouter();
   const { workspace, dispatchActionWithResult, showToast } = useMargBooks();
@@ -65,7 +85,11 @@ export function RetailPosModule() {
     workspace.companies[0];
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const lastCameraScanRef = useRef<{ code: string; ts: number }>({ code: '', ts: 0 });
 
+  const [posMode, setPosMode] = useState<'BILLING' | 'RETURN'>('BILLING');
   const [selectedCounter, setSelectedCounter] = useState<string>(
     workspace.posCounters[0]?.counterCode || 'LANE-01'
   );
@@ -81,16 +105,60 @@ export function RetailPosModule() {
   const [weighingItem, setWeighingItem] = useState<InventoryItem | null>(null);
   const [customKgInput, setCustomKgInput] = useState('1.00');
   const [redeemPoints, setRedeemPoints] = useState(0);
+
+  // Promo Coupon State
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<PromoCoupon | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+
+  // Audio Beep & Camera Scanner State
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<string>(
+    'Point camera at any EAN-13 barcode or weighted produce sticker.'
+  );
+
+  // Payment Split State
   const [payments, setPayments] = useState<PaymentSplit[]>([
     { mode: 'Cash', amount: 0, reference: '' },
   ]);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
+  // Return / Exchange Recall State
+  const [returnSearch, setReturnSearch] = useState('');
+  const [selectedReturnInvoice, setSelectedReturnInvoice] = useState<InvoiceRecord | null>(null);
+  const [returnQtyMap, setReturnQtyMap] = useState<Record<string, number>>({});
+  const [returnReason, setReturnReason] = useState('Customer exchange / damaged pack');
+
   const today = '2026-11-26';
+  const weightedPrefix = workspace.controlRoom.weightedBarcodePrefix || '21';
+  const storeUpiVpa = workspace.controlRoom.upiVpa || 'freshmart@upi';
 
   useEffect(() => {
     barcodeInputRef.current?.focus();
+    const timer = window.setTimeout(() => {
+      try {
+        const savedSound = window.localStorage.getItem('freshmart-pos-sound');
+        if (savedSound === 'off') setSoundEnabled(false);
+      } catch {
+        // Ignore storage errors
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+
+  const toggleSound = () => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem('freshmart-pos-sound', next ? 'on' : 'off');
+      } catch {
+        // Ignore
+      }
+      if (next) playCheckoutBeep('scan', true);
+      return next;
+    });
+  };
 
   const customers = useMemo(
     () => workspace.ledgers.filter((l) => l.groupType === 'Customer'),
@@ -115,6 +183,11 @@ export function RetailPosModule() {
     return Array.from(set);
   }, [workspace.items]);
 
+  const activeCoupons = useMemo(
+    () => workspace.promoCoupons.filter((c) => c.active),
+    [workspace.promoCoupons]
+  );
+
   const itemStockMap = useMemo(() => {
     const map = new Map<
       number,
@@ -134,9 +207,14 @@ export function RetailPosModule() {
     return map;
   }, [workspace.items, workspace.batches]);
 
-  // Fast-moving supermarket quick-add strip (Carry Bag, Milk, Bread, Water, Onions)
   const quickEssentialItems = useMemo(() => {
-    const priorityBarcodes = ['100001', '8901262150019', '8901063311022', '8906017290018', '200102'];
+    const priorityBarcodes = [
+      '100001',
+      '8901262150019',
+      '8901063311022',
+      '8906017290018',
+      '200102',
+    ];
     const found: InventoryItem[] = [];
     for (const code of priorityBarcodes) {
       const match = workspace.items.find((it) => it.barcode === code);
@@ -144,9 +222,7 @@ export function RetailPosModule() {
     }
     if (found.length < 5) {
       for (const it of workspace.items) {
-        if (!found.some((f) => f.id === it.id)) {
-          found.push(it);
-        }
+        if (!found.some((f) => f.id === it.id)) found.push(it);
         if (found.length === 5) break;
       }
     }
@@ -154,7 +230,7 @@ export function RetailPosModule() {
   }, [workspace.items]);
 
   const filteredItems = useMemo(() => {
-    const parsed = parseBarcodeOrPluInput(barcodeQuery);
+    const parsed = parseBarcodeOrPluInput(barcodeQuery, weightedPrefix);
     const q = parsed.query.toLowerCase();
     return workspace.items.filter((item) => {
       const catOk = categoryFilter === 'All' || item.category === categoryFilter;
@@ -163,10 +239,11 @@ export function RetailPosModule() {
         item.name.toLowerCase().includes(q) ||
         item.barcode.toLowerCase().includes(q) ||
         item.sku.toLowerCase().includes(q) ||
-        item.brand.toLowerCase().includes(q);
+        item.brand.toLowerCase().includes(q) ||
+        (parsed.pluSuffix ? item.barcode.endsWith(parsed.pluSuffix) : false);
       return catOk && searchOk;
     });
-  }, [workspace.items, categoryFilter, barcodeQuery]);
+  }, [workspace.items, categoryFilter, barcodeQuery, weightedPrefix]);
 
   const isInterState = Boolean(
     selectedCustomer?.stateCode &&
@@ -187,6 +264,7 @@ export function RetailPosModule() {
         loyaltyPointValue: workspace.controlRoom.loyaltyPointValue,
         loyaltyEarnPer100: workspace.controlRoom.loyaltyEarnPer100,
         enableLoyaltyPoints: workspace.controlRoom.enableLoyaltyPoints,
+        promoCoupon: appliedCoupon,
       }),
     [
       cart,
@@ -195,138 +273,348 @@ export function RetailPosModule() {
       isInterState,
       redeemPoints,
       selectedCustomer,
+      appliedCoupon,
     ]
   );
 
-  const addItemWithQty = useCallback(
-    (item: InventoryItem, qtyToAdd: number) => {
-      setCheckoutError(null);
-      const safeAdd = round3(qtyToAdd);
-      if (safeAdd <= 0) return;
+  // Keep single payment auto-synced when grand total updates (only if single non-overtendered payment)
+  const effectivePayments = useMemo(() => {
+    if (
+      payments.length === 1 &&
+      payments[0].amount === 0 &&
+      calculatedBill.grandTotal > 0
+    ) {
+      return [{ ...payments[0], amount: calculatedBill.grandTotal }];
+    }
+    return payments;
+  }, [payments, calculatedBill.grandTotal]);
 
-      const stock = itemStockMap.get(item.id);
-      const available = stock?.totalQty ?? 0;
+  const paymentValidation = useMemo(
+    () => validateMultiPayments(effectivePayments, calculatedBill.grandTotal),
+    [effectivePayments, calculatedBill.grandTotal]
+  );
 
+  const creditSplitAmount = useMemo(
+    () =>
+      round2(
+        effectivePayments
+          .filter((p) => p.mode === 'Credit')
+          .reduce((s, p) => s + (Number(p.amount) || 0), 0)
+      ),
+    [effectivePayments]
+  );
+
+  const udhaarCheck = useMemo(
+    () =>
+      validateUdhaarLimit({
+        customer: selectedCustomer,
+        creditAmount: creditSplitAmount,
+      }),
+    [selectedCustomer, creditSplitAmount]
+  );
+
+  const upiSplitAmount = useMemo(
+    () =>
+      round2(
+        effectivePayments
+          .filter((p) => p.mode === 'UPI')
+          .reduce((s, p) => s + (Number(p.amount) || 0), 0)
+      ),
+    [effectivePayments]
+  );
+
+  const hasCashPayment = effectivePayments.some((p) => p.mode === 'Cash');
+  const hasUpiPayment = effectivePayments.some((p) => p.mode === 'UPI');
+
+  // Broadcast live basket updates to Customer-Facing Second Screen
+  useEffect(() => {
+    broadcastCustomerDisplay({
+      updatedAt: new Date().toISOString(),
+      storeName: activeCompany?.name || 'FreshMart Superstore',
+      branchName: activeCompany?.branchName || 'Main Flagship Store',
+      counterCode: selectedCounter,
+      customerName: selectedCustomer?.name || 'Walk-in Shopper',
+      upiVpa: storeUpiVpa,
+      lines: calculatedBill.lines.map((ln) => ({
+        name: ln.name,
+        qty: ln.qty,
+        uqc: ln.uqc,
+        mrp: ln.mrp,
+        rate: ln.rate,
+        lineTotal: ln.lineTotal,
+      })),
+      subtotal: calculatedBill.subtotal,
+      totalTax: calculatedBill.totalTax,
+      couponCode: calculatedBill.couponCode,
+      couponDiscount: calculatedBill.couponDiscountAmount,
+      loyaltyDiscount: calculatedBill.loyaltyDiscountAmount,
+      totalMrpSavings: calculatedBill.totalMrpSavings,
+      grandTotal: calculatedBill.grandTotal,
+      upiAmount: upiSplitAmount > 0 ? upiSplitAmount : calculatedBill.grandTotal,
+      status: calculatedBill.lines.length > 0 ? 'SCANNING' : 'IDLE',
+    });
+  }, [
+    activeCompany,
+    selectedCounter,
+    selectedCustomer,
+    storeUpiVpa,
+    calculatedBill,
+    upiSplitAmount,
+  ]);
+
+  const addItemToCart = useCallback(
+    (item: InventoryItem, qtyToAdd = 1, skipWeighPrompt = false) => {
+      const stockInfo = itemStockMap.get(item.id);
+      const available = stockInfo?.totalQty ?? 0;
+
+      if ((item.isWeighed || item.uqc === 'KG') && !skipWeighPrompt) {
+        setWeighingItem(item);
+        setCustomKgInput('1.00');
+        return;
+      }
+
+      if (!workspace.controlRoom.allowNegativeStock && available <= 0) {
+        playCheckoutBeep('error', soundEnabled);
+        showToast(`${item.name} is out of stock.`, 'warning');
+        return;
+      }
+
+      const normalizedAdd = round3(qtyToAdd);
       setCart((prev) => {
-        const existing = prev.find((l) => l.item.id === item.id);
-        const nextQty = round3((existing?.qty || 0) + safeAdd);
-        if (!workspace.controlRoom.allowNegativeStock && nextQty > available) {
+        const idx = prev.findIndex((line) => line.item.id === item.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          const nextQty = round3(next[idx].qty + normalizedAdd);
+          if (!workspace.controlRoom.allowNegativeStock && nextQty > available) {
+            playCheckoutBeep('error', soundEnabled);
+            showToast(
+              `Only ${formatQtyDisplay(available, item.uqc, item.isWeighed)} available in stock for ${item.name}.`,
+              'warning'
+            );
+            return prev;
+          }
+          next[idx] = { ...next[idx], qty: nextQty };
+          return next;
+        }
+        if (!workspace.controlRoom.allowNegativeStock && normalizedAdd > available) {
+          playCheckoutBeep('error', soundEnabled);
           showToast(
-            `Insufficient stock for ${item.name} (${formatQtyDisplay(available, item.uqc, item.isWeighed)} available).`,
+            `Only ${formatQtyDisplay(available, item.uqc, item.isWeighed)} available in stock for ${item.name}.`,
             'warning'
           );
           return prev;
-        }
-        if (existing) {
-          return prev.map((l) =>
-            l.item.id === item.id ? { ...l, qty: nextQty } : l
-          );
         }
         return [
           ...prev,
           {
             item,
-            batchNo: stock?.preferredBatch || 'STD-01',
-            expiryDate: stock?.expiryDate || '2027-12-31',
-            qty: safeAdd,
+            batchNo: stockInfo?.preferredBatch || 'STD-01',
+            expiryDate: stockInfo?.expiryDate || '2027-12-31',
+            qty: normalizedAdd,
           },
         ];
       });
+      playCheckoutBeep('scan', soundEnabled);
+      setWeighingItem(null);
+      setCheckoutError(null);
+      // Reset single cash tender back to auto-sync exact total unless split
+      setPayments((prev) => (prev.length === 1 ? [{ ...prev[0], amount: 0 }] : prev));
     },
-    [itemStockMap, workspace.controlRoom.allowNegativeStock, showToast]
+    [itemStockMap, workspace.controlRoom.allowNegativeStock, showToast, soundEnabled]
   );
 
-  const handleTileClick = (item: InventoryItem) => {
-    if (item.isWeighed) {
-      setWeighingItem(item);
-      setCustomKgInput('1.00');
-      return;
-    }
-    addItemWithQty(item, 1);
-  };
+  const processScannedCode = useCallback(
+    (rawCode: string) => {
+      const parsed = parseBarcodeOrPluInput(rawCode, weightedPrefix);
+      const q = parsed.query.toLowerCase();
+      if (!q) return false;
 
-  const handleAddWeighedQty = (kg: number) => {
-    if (!weighingItem) return;
-    const safeKg = round3(kg);
-    if (!Number.isFinite(safeKg) || safeKg <= 0) {
-      showToast('Enter a valid weight in KG (e.g. 0.25 or 1.5).', 'warning');
-      return;
-    }
-    addItemWithQty(weighingItem, safeKg);
-    showToast(
-      `Added ${safeKg} ${weighingItem.uqc} of ${weighingItem.name}`,
-      'info'
-    );
-    setWeighingItem(null);
-    barcodeInputRef.current?.focus();
-  };
+      const exact = workspace.items.find(
+        (i) =>
+          i.barcode.toLowerCase() === q ||
+          i.sku.toLowerCase() === q ||
+          (parsed.pluSuffix ? i.barcode.endsWith(parsed.pluSuffix) : false)
+      );
+      if (exact) {
+        const skipWeight =
+          Boolean(parsed.isWeightedBarcode) ||
+          rawCode.includes('*') ||
+          (!exact.isWeighed && exact.uqc !== 'KG');
+        addItemToCart(exact, parsed.qty, skipWeight);
+        if (parsed.isWeightedBarcode) {
+          showToast(
+            `Weighted sticker decoded: ${exact.name} (${parsed.qty} ${exact.uqc})`,
+            'success'
+          );
+        }
+        return true;
+      }
+
+      const nameMatches = workspace.items.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) || i.brand.toLowerCase().includes(q)
+      );
+      if (nameMatches.length === 1) {
+        const match = nameMatches[0];
+        const skipWeight = rawCode.includes('*') || (!match.isWeighed && match.uqc !== 'KG');
+        addItemToCart(match, parsed.qty, skipWeight);
+        return true;
+      }
+
+      playCheckoutBeep('error', soundEnabled);
+      showToast(`No supermarket item matched "${rawCode}".`, 'warning');
+      return false;
+    },
+    [workspace.items, weightedPrefix, addItemToCart, showToast, soundEnabled]
+  );
 
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const { qty, query } = parseBarcodeOrPluInput(barcodeQuery);
-    const q = query.toLowerCase();
-    if (!q) return;
-
-    const exact = workspace.items.find(
-      (i) => i.barcode.toLowerCase() === q || i.sku.toLowerCase() === q
-    );
-    const target = exact || filteredItems[0];
-
-    if (target) {
-      // If item is weighed and user didn't pass an explicit qty multiplier like 0.5*200101, open inline weigh bar
-      if (target.isWeighed && !barcodeQuery.includes('*')) {
-        setWeighingItem(target);
-        setCustomKgInput('1.00');
-        setBarcodeQuery('');
-        return;
-      }
-      addItemWithQty(target, qty);
+    if (!barcodeQuery.trim()) return;
+    if (processScannedCode(barcodeQuery)) {
       setBarcodeQuery('');
-      showToast(
-        `Scanned ${formatQtyDisplay(qty, target.uqc, target.isWeighed)} · ${target.name}`,
-        'info'
-      );
-    } else {
-      showToast(`No product matched barcode / PLU "${query}"`, 'warning');
+      barcodeInputRef.current?.focus();
     }
   };
 
-  const updateLineQty = (itemId: number, delta: number) => {
-    setCheckoutError(null);
-    const available = itemStockMap.get(itemId)?.totalQty ?? 0;
+  // Live Camera Barcode Scanner lifecycle
+  useEffect(() => {
+    if (!cameraOpen) {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+    let rafId = 0;
+
+    async function startCamera() {
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+      ) {
+        setCameraStatus(
+          'Camera hardware unavailable in this browser. Use the 1-tap sample scanner buttons below to test.'
+        );
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+
+        const DetectorCtor = (
+          window as unknown as {
+            BarcodeDetector?: new (opts?: { formats: string[] }) => {
+              detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
+            };
+          }
+        ).BarcodeDetector;
+
+        if (!DetectorCtor) {
+          setCameraStatus(
+            'Camera active · Browser BarcodeDetector API not supported here—use USB gun or sample triggers below.'
+          );
+          return;
+        }
+
+        const detector = new DetectorCtor({
+          formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'qr_code'],
+        });
+        setCameraStatus('Live camera scanner active · Hold EAN-13 or weighted sticker in frame.');
+
+        const scanLoop = async () => {
+          if (cancelled || !videoRef.current) return;
+          try {
+            const results = await detector.detect(videoRef.current);
+            if (results && results.length > 0 && results[0].rawValue) {
+              const code = results[0].rawValue;
+              const now = Date.now();
+              if (
+                lastCameraScanRef.current.code !== code ||
+                now - lastCameraScanRef.current.ts > 1200
+              ) {
+                lastCameraScanRef.current = { code, ts: now };
+                processScannedCode(code);
+              }
+            }
+          } catch {
+            // Ignore transient decode frame errors
+          }
+          rafId = requestAnimationFrame(() => {
+            void scanLoop();
+          });
+        };
+        rafId = requestAnimationFrame(() => {
+          void scanLoop();
+        });
+      } catch {
+        setCameraStatus(
+          'Camera permission denied or no webcam found. Use 1-tap sample scanner triggers below.'
+        );
+      }
+    }
+
+    void startCamera();
+
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [cameraOpen, processScannedCode]);
+
+  const updateCartQty = (itemId: number, delta: number) => {
     setCart((prev) =>
       prev
         .map((line) => {
           if (line.item.id !== itemId) return line;
-          const nextQty = round3(line.qty + delta);
+          const step = line.item.isWeighed || line.item.uqc === 'KG' ? 0.25 : 1;
+          const nextQty = round3(line.qty + delta * step);
+          if (nextQty <= 0) return null;
+          const available = itemStockMap.get(itemId)?.totalQty ?? 9999;
           if (!workspace.controlRoom.allowNegativeStock && nextQty > available) {
-            showToast(
-              `Only ${formatQtyDisplay(available, line.item.uqc, line.item.isWeighed)} in stock for ${line.item.name}.`,
-              'warning'
-            );
+            showToast(`Max available stock reached for ${line.item.name}.`, 'warning');
             return line;
           }
           return { ...line, qty: nextQty };
         })
-        .filter((line) => line.qty > 0.0001)
+        .filter((l): l is RawCartLine => l !== null)
     );
+    setPayments((prev) => (prev.length === 1 ? [{ ...prev[0], amount: 0 }] : prev));
   };
 
   const handleHoldCart = useCallback(() => {
     if (cart.length === 0) {
-      showToast('Scan at least one item before holding a cart.', 'warning');
+      showToast('Add items to the cart before parking a bill.', 'warning');
       return;
     }
-    const nowTime = new Date().toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    const nextHold: HeldCart = {
-      id: `hold-${Date.now()}`,
-      label: `Cart #${heldCarts.length + 1}`,
-      customerId: selectedCustomer?.id || 1,
+    const newHeld: HeldCart = {
+      id: `HOLD-${Date.now().toString().slice(-4)}`,
+      label: `Shopper #${heldCarts.length + 1}`,
+      customerId: selectedCustomerId,
       customerName: selectedCustomer?.name || 'Walk-in Shopper',
-      heldAt: nowTime,
+      heldAt: new Date().toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
       itemCount: cart.length,
       estimatedTotal: calculatedBill.grandTotal,
       lines: cart.map((l) => ({
@@ -338,25 +626,21 @@ export function RetailPosModule() {
         manualDiscountPercent: l.manualDiscountPercent,
       })),
     };
-    setHeldCarts((prev) => [nextHold, ...prev]);
+    setHeldCarts((prev) => [newHeld, ...prev]);
     setCart([]);
     setRedeemPoints(0);
+    setAppliedCoupon(null);
+    setCouponInput('');
     setPayments([{ mode: 'Cash', amount: 0, reference: '' }]);
-    setCheckoutError(null);
-    showToast(
-      `Parked ${nextHold.label} (${nextHold.itemCount} items · ${formatInr(nextHold.estimatedTotal)}) — ready for next shopper.`,
-      'info'
-    );
+    showToast(`Parked ${newHeld.label} (${newHeld.itemCount} items). Ready for next customer.`, 'info');
     barcodeInputRef.current?.focus();
-  }, [cart, heldCarts.length, selectedCustomer, calculatedBill.grandTotal, showToast]);
+  }, [cart, heldCarts.length, selectedCustomerId, selectedCustomer, calculatedBill.grandTotal, showToast]);
 
-  const handleResumeHeldCart = (held: HeldCart) => {
-    // If active cart has items, auto-hold it first so nothing is lost
-    if (cart.length > 0) {
-      handleHoldCart();
-    }
+  const handleResumeHeldCart = (heldId: string) => {
+    const target = heldCarts.find((h) => h.id === heldId);
+    if (!target) return;
     const restoredLines: RawCartLine[] = [];
-    for (const ln of held.lines) {
+    for (const ln of target.lines) {
       const item = workspace.items.find((it) => it.id === ln.itemId);
       if (item) {
         restoredLines.push({
@@ -370,809 +654,1249 @@ export function RetailPosModule() {
       }
     }
     setCart(restoredLines);
-    setSelectedCustomerId(held.customerId);
-    setHeldCarts((prev) => prev.filter((h) => h.id !== held.id));
+    setSelectedCustomerId(target.customerId);
+    setHeldCarts((prev) => prev.filter((h) => h.id !== heldId));
     setPayments([{ mode: 'Cash', amount: 0, reference: '' }]);
-    setCheckoutError(null);
-    showToast(`Resumed ${held.label} (${held.customerName}).`, 'info');
+    showToast(`Resumed ${target.label} into active lane.`, 'success');
     barcodeInputRef.current?.focus();
   };
 
-  const setExactPaymentForSingleMode = useCallback(
-    (mode: PaymentMode) => {
-      setCheckoutError(null);
-      setPayments([{ mode, amount: calculatedBill.grandTotal, reference: '' }]);
-    },
-    [calculatedBill.grandTotal]
-  );
-
-  const addSplitPaymentRow = () => {
-    const used = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    const rem = Math.max(0, round2(calculatedBill.grandTotal - used));
-    const nextMode: PaymentMode = payments.some((p) => p.mode === 'UPI')
-      ? 'Card'
-      : 'UPI';
-    setPayments((prev) => [...prev, { mode: nextMode, amount: rem, reference: '' }]);
-  };
-
-  const updatePaymentRow = (idx: number, patch: Partial<PaymentSplit>) => {
-    setCheckoutError(null);
-    setPayments((prev) =>
-      prev.map((row, i) => (i === idx ? { ...row, ...patch } : row))
+  const handleApplyCouponCode = (rawCode: string) => {
+    const preCouponTotal = round2(calculatedBill.taxableTotal + calculatedBill.totalTax);
+    const evalRes = evaluatePromoCoupon({
+      code: rawCode,
+      coupons: workspace.promoCoupons,
+      billTotalBeforeCoupon: preCouponTotal,
+      asOfDate: today,
+    });
+    if (!evalRes.valid || !evalRes.coupon) {
+      setCouponError(evalRes.error || 'Invalid coupon.');
+      playCheckoutBeep('error', soundEnabled);
+      return;
+    }
+    setAppliedCoupon(evalRes.coupon);
+    setCouponInput(evalRes.coupon.code);
+    setCouponError(null);
+    playCheckoutBeep('scan', soundEnabled);
+    showToast(
+      `Coupon ${evalRes.coupon.code} applied (-${formatInr(evalRes.discountAmount)})!`,
+      'success'
     );
   };
 
-  const removePaymentRow = (idx: number) => {
-    setPayments((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
+  const setQuickPaymentMode = (mode: PaymentMode) => {
+    setCheckoutError(null);
+    setPayments([{ mode, amount: calculatedBill.grandTotal, reference: '' }]);
   };
 
-  const paymentValidation = useMemo(
-    () => validateMultiPayments(payments, calculatedBill.grandTotal),
-    [payments, calculatedBill.grandTotal]
-  );
-
-  const handleCompleteSale = useCallback(async () => {
+  const handleFastCashTender = (amount: number, additive = false) => {
     setCheckoutError(null);
-    if (activeCompany?.fyLocked) {
-      setCheckoutError('Financial year is locked in Control Room. Unlock FY to post bills.');
+    setPayments((prev) => {
+      const cashIdx = prev.findIndex((p) => p.mode === 'Cash');
+      if (cashIdx >= 0) {
+        const next = [...prev];
+        const currentAmt = next[cashIdx].amount === 0 ? 0 : next[cashIdx].amount;
+        next[cashIdx] = {
+          ...next[cashIdx],
+          amount: additive ? round2(currentAmt + amount) : amount,
+        };
+        return next;
+      }
+      return [{ mode: 'Cash', amount, reference: '' }];
+    });
+  };
+
+  const addSplitPaymentRow = () => {
+    const remaining = Math.max(
+      0,
+      round2(
+        calculatedBill.grandTotal -
+          effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+      )
+    );
+    setPayments([
+      ...effectivePayments,
+      { mode: 'UPI', amount: remaining, reference: '' },
+    ]);
+  };
+
+  const handleCompleteCheckout = useCallback(async () => {
+    if (cart.length === 0) {
+      setCheckoutError('Scan or add at least one item before saving the bill.');
+      return;
+    }
+    if (!paymentValidation.valid) {
+      setCheckoutError(paymentValidation.error || 'Verify payment split amounts.');
+      return;
+    }
+    if (!udhaarCheck.allowed) {
+      setCheckoutError(udhaarCheck.error || 'Customer Udhaar limit exceeded.');
+      playCheckoutBeep('error', soundEnabled);
       return;
     }
     if (activeCounterObj?.status === 'CLOSED') {
       setCheckoutError(
-        `${activeCounterObj.counterCode} is closed for the day. Reopen lane in Control Room or Shifts.`
+        `${activeCounterObj.counterCode} is CLOSED. Reopen lane in Shifts & Cash or pick an open lane.`
       );
       return;
     }
-    if (calculatedBill.lines.length === 0) {
-      setCheckoutError('Scan or tap at least one grocery item to create a supermarket bill.');
-      return;
-    }
 
-    const validation = validateMultiPayments(payments, calculatedBill.grandTotal);
-    if (!validation.valid) {
-      setCheckoutError(validation.error || 'Verify multi-payment amounts or press F8 Cash / F9 UPI.');
-      return;
-    }
+    const invoiceNo = `POS-26-${String(Math.floor(1000 + Math.random() * 8999))}`;
+    const irn = workspace.controlRoom.eInvoiceAutoIrn
+      ? generateDeterministicIrn(activeCompany?.gstin || '07AABCF9182D1Z4', invoiceNo, today)
+      : '';
 
-    const nextSeq = workspace.invoices.length + 413;
-    const invoiceNo = `POS-26-0${nextSeq}`;
-    const irn =
-      workspace.controlRoom.eInvoiceAutoIrn && selectedCustomer?.gstin
-        ? generateDeterministicIrn(activeCompany.gstin, invoiceNo, today)
-        : '';
+    const normalizedPayments = effectivePayments
+      .filter((p) => p.amount > 0)
+      .map((p) => ({
+        mode: p.mode,
+        amount: round2(p.amount),
+        reference: p.reference || '',
+      }));
 
-    const newInvoicePayload = {
-      invoiceNo,
-      docType: 'POS_BILL',
-      counterCode: selectedCounter,
-      ledgerId: selectedCustomer?.id || null,
-      customerName: selectedCustomer?.name || 'Walk-in Supermarket Shopper',
-      customerPhone: selectedCustomer?.phone || '',
-      customerGstin: selectedCustomer?.gstin || '',
-      invoiceDate: today,
-      subtotal: calculatedBill.subtotal,
-      discountAmount: calculatedBill.discountAmount,
-      cgstAmount: calculatedBill.cgstAmount,
-      sgstAmount: calculatedBill.sgstAmount,
-      igstAmount: calculatedBill.igstAmount,
-      roundOff: calculatedBill.roundOff,
-      grandTotal: calculatedBill.grandTotal,
-      loyaltyEarned: calculatedBill.loyaltyEarned,
-      loyaltyRedeemed: calculatedBill.loyaltyRedeemed,
-      paymentModeSummary: validation.summaryLabel,
-      payments: payments.filter((p) => p.amount > 0),
-      items: calculatedBill.lines,
-      irn,
-      ewayBillNo: '',
-      status: 'Paid',
-    };
+    const billStatus = creditSplitAmount > 0 && creditSplitAmount >= calculatedBill.grandTotal
+      ? 'Unpaid'
+      : creditSplitAmount > 0
+        ? 'Partial'
+        : 'Paid';
 
-    const res = await dispatchActionWithResult(
+    const result = await dispatchActionWithResult(
       'CREATE_INVOICE',
-      newInvoicePayload,
-      `Supermarket Bill ${invoiceNo} generated (${formatInr(calculatedBill.grandTotal)} · Saved ${formatInr(calculatedBill.totalMrpSavings)}).`
+      {
+        invoiceNo,
+        docType: 'POS_BILL',
+        counterCode: selectedCounter,
+        ledgerId: selectedCustomer?.id ?? null,
+        customerName: selectedCustomer?.name || 'Walk-in Retail Customer',
+        customerPhone: selectedCustomer?.phone || '',
+        customerGstin: selectedCustomer?.gstin || '',
+        invoiceDate: today,
+        subtotal: calculatedBill.subtotal,
+        discountAmount: calculatedBill.discountAmount,
+        cgstAmount: calculatedBill.cgstAmount,
+        sgstAmount: calculatedBill.sgstAmount,
+        igstAmount: calculatedBill.igstAmount,
+        roundOff: calculatedBill.roundOff,
+        grandTotal: calculatedBill.grandTotal,
+        loyaltyEarned: calculatedBill.loyaltyEarned,
+        loyaltyRedeemed: calculatedBill.loyaltyRedeemed,
+        couponCode: calculatedBill.couponCode,
+        couponDiscount: calculatedBill.couponDiscountAmount,
+        paymentModeSummary: paymentValidation.summaryLabel,
+        payments: normalizedPayments,
+        items: calculatedBill.lines,
+        irn,
+        ewayBillNo: '',
+        status: billStatus,
+      },
+      `Bill ${invoiceNo} saved (${formatInr(calculatedBill.grandTotal)})`
     );
 
-    if (res.ok) {
+    if (result.ok) {
+      playCheckoutBeep('cash', soundEnabled);
+      broadcastCustomerDisplay({
+        updatedAt: new Date().toISOString(),
+        storeName: activeCompany?.name || 'FreshMart Superstore',
+        branchName: activeCompany?.branchName || 'Main Flagship Store',
+        counterCode: selectedCounter,
+        customerName: selectedCustomer?.name || 'Walk-in Shopper',
+        upiVpa: storeUpiVpa,
+        lines: calculatedBill.lines.map((ln) => ({
+          name: ln.name,
+          qty: ln.qty,
+          uqc: ln.uqc,
+          mrp: ln.mrp,
+          rate: ln.rate,
+          lineTotal: ln.lineTotal,
+        })),
+        subtotal: calculatedBill.subtotal,
+        totalTax: calculatedBill.totalTax,
+        couponCode: calculatedBill.couponCode,
+        couponDiscount: calculatedBill.couponDiscountAmount,
+        loyaltyDiscount: calculatedBill.loyaltyDiscountAmount,
+        totalMrpSavings: calculatedBill.totalMrpSavings,
+        grandTotal: calculatedBill.grandTotal,
+        upiAmount: 0,
+        status: 'PAID',
+        lastInvoiceNo: invoiceNo,
+      });
+
+      const created = result.data?.invoices.find((inv) => inv.invoiceNo === invoiceNo);
       setCart([]);
       setRedeemPoints(0);
+      setAppliedCoupon(null);
+      setCouponInput('');
       setPayments([{ mode: 'Cash', amount: 0, reference: '' }]);
-      const createdInvoice =
-        res.data?.invoices.find((i) => i.invoiceNo === invoiceNo) ||
-        res.data?.invoices[0];
-      if (createdInvoice) {
-        router.push(`/admin/bills/${createdInvoice.id}`);
+      setCheckoutError(null);
+      if (created) {
+        router.push(`/admin/bills/${created.id}`);
       }
     }
   }, [
-    activeCompany,
+    cart.length,
+    paymentValidation,
+    udhaarCheck,
     activeCounterObj,
-    calculatedBill,
-    payments,
-    workspace.invoices.length,
     workspace.controlRoom.eInvoiceAutoIrn,
-    selectedCustomer,
-    selectedCounter,
+    activeCompany,
+    effectivePayments,
+    creditSplitAmount,
+    calculatedBill,
     dispatchActionWithResult,
+    selectedCounter,
+    selectedCustomer,
+    storeUpiVpa,
+    soundEnabled,
     router,
   ]);
 
-  // High-speed Supermarket Checkout Hotkeys: F2 Scan, F4 Hold, F8 Cash, F9 UPI, F12 Complete
+  // POS-specific hotkeys (F2 focus scanner, F4 hold cart, F8 Cash, F9 UPI, F12 Checkout)
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
+    const onPosKey = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
         e.preventDefault();
+        setPosMode('BILLING');
         barcodeInputRef.current?.focus();
-        barcodeInputRef.current?.select();
       } else if (e.key === 'F4') {
         e.preventDefault();
         handleHoldCart();
-      } else if (e.key === 'F8') {
+      } else if (e.key === 'F8' && cart.length > 0) {
         e.preventDefault();
-        if (calculatedBill.grandTotal > 0) {
-          setExactPaymentForSingleMode('Cash');
-          showToast(`Exact Cash set: ${formatInr(calculatedBill.grandTotal)}`, 'info');
-        }
-      } else if (e.key === 'F9') {
+        setPayments([{ mode: 'Cash', amount: calculatedBill.grandTotal, reference: '' }]);
+      } else if (e.key === 'F9' && cart.length > 0) {
         e.preventDefault();
-        if (calculatedBill.grandTotal > 0) {
-          setExactPaymentForSingleMode('UPI');
-          showToast(`Exact UPI set: ${formatInr(calculatedBill.grandTotal)}`, 'info');
-        }
-      } else if (e.key === 'F12') {
+        setPayments([{ mode: 'UPI', amount: calculatedBill.grandTotal, reference: '' }]);
+      } else if (e.key === 'F12' && cart.length > 0) {
         e.preventDefault();
-        void handleCompleteSale();
+        void handleCompleteCheckout();
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [
-    handleHoldCart,
-    calculatedBill.grandTotal,
-    setExactPaymentForSingleMode,
-    handleCompleteSale,
-    showToast,
-  ]);
+    window.addEventListener('keydown', onPosKey);
+    return () => window.removeEventListener('keydown', onPosKey);
+  }, [cart.length, calculatedBill.grandTotal, handleHoldCart, handleCompleteCheckout]);
+
+  // Return / Exchange helpers
+  const returnableInvoices = useMemo(() => {
+    const q = returnSearch.trim().toLowerCase();
+    return workspace.invoices
+      .filter((inv) => inv.docType === 'POS_BILL' || inv.docType === 'GST_INVOICE')
+      .filter(
+        (inv) =>
+          !q ||
+          inv.invoiceNo.toLowerCase().includes(q) ||
+          inv.customerName.toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+  }, [workspace.invoices, returnSearch]);
+
+  const handleSelectReturnInvoice = (inv: InvoiceRecord) => {
+    setSelectedReturnInvoice(inv);
+    const initialMap: Record<string, number> = {};
+    inv.items.forEach((ln, idx) => {
+      initialMap[`${ln.itemId}-${idx}`] = 0;
+    });
+    setReturnQtyMap(initialMap);
+  };
+
+  const handlePostCreditNoteReturn = async (resumeExchange: boolean) => {
+    if (!selectedReturnInvoice) return;
+    const returnLines = selectedReturnInvoice.items
+      .map((ln, idx) => {
+        const rQty = round3(returnQtyMap[`${ln.itemId}-${idx}`] || 0);
+        if (rQty <= 0) return null;
+        const gross = round2(ln.rate * rQty);
+        const taxAmt = round2((gross * ln.taxSlab) / 100);
+        return {
+          ...ln,
+          qty: rQty,
+          freeQty: 0,
+          discountAmount: 0,
+          taxableValue: gross,
+          taxAmount: taxAmt,
+          lineTotal: round2(gross + taxAmt),
+        };
+      })
+      .filter((l): l is NonNullable<typeof l> => l !== null);
+
+    if (returnLines.length === 0) {
+      showToast('Select quantity greater than 0 on at least one item to return.', 'warning');
+      return;
+    }
+
+    const subtotal = round2(returnLines.reduce((s, l) => s + l.taxableValue, 0));
+    const totalTax = round2(returnLines.reduce((s, l) => s + l.taxAmount, 0));
+    const grandTotal = Math.round(subtotal + totalTax);
+    const cnNo = `CN-26-${String(Math.floor(1000 + Math.random() * 8999))}`;
+
+    const res = await dispatchActionWithResult(
+      'CREATE_INVOICE',
+      {
+        invoiceNo: cnNo,
+        docType: 'CREDIT_NOTE',
+        counterCode: selectedCounter,
+        ledgerId: selectedReturnInvoice.ledgerId,
+        customerName: selectedReturnInvoice.customerName,
+        customerPhone: selectedReturnInvoice.customerPhone,
+        customerGstin: selectedReturnInvoice.customerGstin,
+        invoiceDate: today,
+        subtotal,
+        discountAmount: 0,
+        cgstAmount: round2(totalTax / 2),
+        sgstAmount: round2(totalTax - round2(totalTax / 2)),
+        igstAmount: 0,
+        roundOff: round2(grandTotal - (subtotal + totalTax)),
+        grandTotal,
+        loyaltyEarned: 0,
+        loyaltyRedeemed: 0,
+        paymentModeSummary: `Credit Note (${returnReason})`,
+        payments: [{ mode: 'Cash', amount: grandTotal, reference: selectedReturnInvoice.invoiceNo }],
+        items: returnLines,
+        irn: '',
+        ewayBillNo: '',
+        status: 'Returned',
+      },
+      `Credit Note ${cnNo} posted (${formatInr(grandTotal)}) & stock restocked`
+    );
+
+    if (res.ok) {
+      playCheckoutBeep('cash', soundEnabled);
+      setSelectedReturnInvoice(null);
+      setReturnQtyMap({});
+      if (resumeExchange) {
+        setPosMode('BILLING');
+        barcodeInputRef.current?.focus();
+      }
+    }
+  };
 
   return (
     <div className="space-y-4">
-      {/* Supermarket POS Top Lane Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
+      {/* Compact Supermarket Terminal Control Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-4 py-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <h1 className="text-lg font-bold text-slate-900">Supermarket Fast POS</h1>
-            <p className="text-xs text-slate-500">
-              Barcode / PLU &amp; Loose Weight (KG) · Auto schemes{' '}
-              {workspace.controlRoom.autoApplySchemes ? 'ON' : 'OFF'} · Loyalty{' '}
-              {workspace.controlRoom.enableLoyaltyPoints ? 'ON' : 'OFF'}
-            </p>
+          <div className="flex items-center gap-2">
+            <ScanBarcode className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />
+            <h1 className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              Supermarket Checkout Terminal
+            </h1>
           </div>
-          {workspace.controlRoom.multiCounterEnabled && (
-            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
-              <label htmlFor="pos-counter-select" className="text-xs font-medium text-slate-600">
-                Lane
-              </label>
+
+          <div
+            role="tablist"
+            aria-label="POS Terminal Mode"
+            className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-slate-900 p-1"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={posMode === 'BILLING'}
+              onClick={() => setPosMode('BILLING')}
+              className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                posMode === 'BILLING'
+                  ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              Fast Billing
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={posMode === 'RETURN'}
+              onClick={() => setPosMode('RETURN')}
+              className={`inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                posMode === 'RETURN'
+                  ? 'bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Return / Exchange</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Active POS Checkout Lane"
+            value={selectedCounter}
+            onChange={(e) => setSelectedCounter(e.target.value)}
+            className="rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
+          >
+            {workspace.posCounters.map((c) => (
+              <option key={c.id} value={c.counterCode}>
+                {c.counterCode} · {c.operatorName} ({c.status})
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={toggleSound}
+            title={soundEnabled ? 'Mute scanner beep' : 'Enable scanner beep'}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-slate-300 cursor-pointer"
+          >
+            {soundEnabled ? (
+              <Volume2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            ) : (
+              <VolumeX className="h-3.5 w-3.5 text-slate-400" />
+            )}
+            <span className="hidden sm:inline">{soundEnabled ? 'Beep On' : 'Muted'}</span>
+          </button>
+
+          <Link
+            href="/admin/pos/customer-display"
+            target="_blank"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-emerald-500 whitespace-nowrap"
+          >
+            <Monitor className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Customer Screen</span>
+          </Link>
+
+          <Link
+            href="/admin/barcodes"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-emerald-500 whitespace-nowrap"
+          >
+            <Barcode className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+            <span className="hidden md:inline">Labels</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={handleHoldCart}
+            disabled={cart.length === 0 || posMode !== 'BILLING'}
+            className="inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100 disabled:opacity-40 whitespace-nowrap cursor-pointer"
+          >
+            <PauseCircle className="h-3.5 w-3.5" />
+            <span>Hold (F4)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Inline Return & Exchange Workspace */}
+      {posMode === 'RETURN' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <section className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Recall Supermarket Bill for Return / Exchange
+              </h2>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {returnableInvoices.length} bills
+              </span>
+            </div>
+            <div className="relative">
+              <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={returnSearch}
+                onChange={(e) => setReturnSearch(e.target.value)}
+                placeholder="Scan receipt no. (e.g. POS-26-0412) or customer name..."
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-96 overflow-y-auto">
+              {returnableInvoices.map((inv) => (
+                <button
+                  key={inv.id}
+                  type="button"
+                  onClick={() => handleSelectReturnInvoice(inv)}
+                  className={`w-full text-left py-2.5 px-2.5 rounded-lg transition-colors cursor-pointer ${
+                    selectedReturnInvoice?.id === inv.id
+                      ? 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    <span className="font-mono">{inv.invoiceNo}</span>
+                    <span className="font-mono tabular-nums">{formatInr(inv.grandTotal)}</span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="truncate">{inv.customerName}</span>
+                    <span>
+                      {inv.invoiceDate} · {inv.items.length} items
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="lg:col-span-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-4">
+            {!selectedReturnInvoice ? (
+              <div className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">
+                Select a bill from the left to pick items for refund or exchange. Returned quantities restock automatically.
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
+                  <div>
+                    <h3 className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
+                      Return Items from {selectedReturnInvoice.invoiceNo}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {selectedReturnInvoice.customerName} · {selectedReturnInvoice.invoiceDate}
+                    </p>
+                  </div>
+                  <input
+                    type="text"
+                    value={returnReason}
+                    onChange={(e) => setReturnReason(e.target.value)}
+                    placeholder="Return reason"
+                    className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 w-64"
+                  />
+                </div>
+
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {selectedReturnInvoice.items.map((ln, idx) => {
+                    const key = `${ln.itemId}-${idx}`;
+                    const currentRet = returnQtyMap[key] || 0;
+                    const step = ln.uqc === 'KG' ? 0.25 : 1;
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center justify-between gap-3 py-3 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                            {ln.name}
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                            Billed: {ln.qty} {ln.uqc} × ₹{ln.rate} · GST {ln.taxSlab}%
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReturnQtyMap((m) => ({
+                                ...m,
+                                [key]: Math.max(0, round3((m[key] || 0) - step)),
+                              }))
+                            }
+                            className="rounded border border-slate-300 dark:border-slate-700 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="w-16 text-center font-mono font-semibold tabular-nums">
+                            {currentRet} {ln.uqc}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReturnQtyMap((m) => ({
+                                ...m,
+                                [key]: Math.min(ln.qty, round3((m[key] || 0) + step)),
+                              }))
+                            }
+                            className="rounded border border-slate-300 dark:border-slate-700 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => void handlePostCreditNoteReturn(false)}
+                    className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    Post Refund Credit Note
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handlePostCreditNoteReturn(true)}
+                    className="rounded-lg bg-emerald-700 hover:bg-emerald-800 px-4 py-2 text-xs font-semibold text-white cursor-pointer"
+                  >
+                    Post Credit Note &amp; Start Exchange Bill
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      ) : (
+        /* Main 58/42 Fast Supermarket Checkout Split */
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+          {/* LEFT 7 COLS (58%): Barcode + Camera Deck + Loose Weight + Touch Catalog */}
+          <section className="xl:col-span-7 space-y-3">
+            {/* Auto-Focus Barcode / Weighted EAN-13 / Camera Bar */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 space-y-3">
+              <form onSubmit={handleBarcodeSubmit} className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <ScanBarcode className="h-4 w-4 text-emerald-700 dark:text-emerald-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    ref={barcodeInputRef}
+                    type="text"
+                    value={barcodeQuery}
+                    onChange={(e) => setBarcodeQuery(e.target.value)}
+                    placeholder={`Scan EAN-13, weighted (${weightedPrefix}0101012500), or qty*code (3*8901262010016)...`}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 pl-9 pr-3 py-2.5 text-sm font-mono text-slate-900 dark:text-slate-100 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-950 focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 px-4 py-2.5 text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraOpen((v) => !v)}
+                  title="Toggle Live Camera Barcode Scanner"
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-semibold whitespace-nowrap cursor-pointer ${
+                    cameraOpen
+                      ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
+                      : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {cameraOpen ? <CameraOff className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{cameraOpen ? 'Stop Cam' : 'Camera'}</span>
+                </button>
+              </form>
+
+              {/* Inline Collapsible Camera Barcode Scanner Deck (Zero Modals) */}
+              {cameraOpen && (
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-slate-950 p-3 text-white space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-medium text-emerald-300">{cameraStatus}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCameraOpen(false)}
+                      className="text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="relative h-40 w-full overflow-hidden rounded-md bg-slate-900 flex items-center justify-center">
+                    <video
+                      ref={videoRef}
+                      playsInline
+                      muted
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="pointer-events-none absolute inset-x-10 top-1/2 -translate-y-1/2 h-0.5 bg-emerald-400/90" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="text-slate-400">Quick Scan Test:</span>
+                    <button
+                      type="button"
+                      onClick={() => processScannedCode('8901262010016')}
+                      className="rounded border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-white hover:bg-white/20 cursor-pointer"
+                    >
+                      Amul Butter (8901262010016)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => processScannedCode(`${weightedPrefix}0101012500`)}
+                      className="rounded border border-emerald-500/40 bg-emerald-900/50 px-2.5 py-1 font-mono text-emerald-200 hover:bg-emerald-800/60 cursor-pointer"
+                    >
+                      Weighted 1.25kg Tomatoes ({weightedPrefix}0101012500)
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 1-Tap Supermarket Quick Essentials Strip */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0 pr-1">
+                  Quick Add:
+                </span>
+                {quickEssentialItems.map((it) => (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => addItemToCart(it, 1, false)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 hover:border-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <span className="truncate max-w-[130px]">{it.name.split('(')[0].trim()}</span>
+                    <span className="font-mono text-[11px] text-emerald-700 dark:text-emerald-400 tabular-nums">
+                      ₹{it.saleRate}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Inline Loose-Weight KG / GM Selector Bar */}
+            {weighingItem && (
+              <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/90 dark:bg-emerald-950/40 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-950 dark:text-emerald-100">
+                    <Scale className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+                    <span>
+                      Weighing Scale Entry: {weighingItem.name} (₹{weighingItem.saleRate}/kg)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setWeighingItem(null)}
+                    className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {QUICK_WEIGHT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => addItemToCart(weighingItem, preset.kg, true)}
+                      className="rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold font-mono text-emerald-900 dark:text-emerald-200 hover:bg-emerald-700 hover:text-white cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.05"
+                      value={customKgInput}
+                      onChange={(e) => setCustomKgInput(e.target.value)}
+                      className="w-20 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100"
+                    />
+                    <span className="text-xs font-mono text-emerald-900 dark:text-emerald-200">kg</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const kg = Number(customKgInput);
+                        if (Number.isFinite(kg) && kg > 0) {
+                          addItemToCart(weighingItem, kg, true);
+                        }
+                      }}
+                      className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 cursor-pointer"
+                    >
+                      Add Weight
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Held / Parked Carts Strip */}
+            {heldCarts.length > 0 && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 p-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                  Parked Carts ({heldCarts.length}):
+                </span>
+                {heldCarts.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => handleResumeHeldCart(h.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 px-3 py-1 text-xs font-medium text-slate-900 dark:text-slate-100 hover:border-amber-500 cursor-pointer"
+                  >
+                    <PlayCircle className="h-3.5 w-3.5 text-amber-600" />
+                    <span>{h.label}</span>
+                    <span className="font-mono text-[11px] text-slate-500 tabular-nums">
+                      ({h.itemCount} · {formatInr(h.estimatedTotal)})
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Category Filter Tabs + High-Speed Touch Product Grid */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 space-y-3">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCategoryFilter(cat)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                      categoryFilter === cat
+                        ? 'bg-emerald-700 text-white'
+                        : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[540px] overflow-y-auto pr-0.5">
+                {filteredItems.map((item) => {
+                  const stock = itemStockMap.get(item.id)?.totalQty ?? 0;
+                  const outOfStock = stock <= 0;
+                  const mrpSave = Math.max(0, round2(item.mrp - item.saleRate));
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => addItemToCart(item, 1, false)}
+                      className={`text-left rounded-lg border p-3 transition-colors flex flex-col justify-between gap-2 cursor-pointer ${
+                        outOfStock
+                          ? 'border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20 opacity-75'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/60 hover:border-emerald-600 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/30'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                          <span className="truncate">{item.barcode}</span>
+                          {item.isWeighed && (
+                            <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
+                              KG
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs font-semibold text-slate-900 dark:text-slate-100 leading-snug line-clamp-2">
+                          {item.name}
+                        </div>
+                      </div>
+                      <div className="flex items-end justify-between gap-1 pt-1 border-t border-slate-200/70 dark:border-slate-800">
+                        <div>
+                          <div className="font-mono text-sm font-bold text-slate-950 dark:text-white tabular-nums">
+                            ₹{item.saleRate}
+                            <span className="text-[10px] font-normal text-slate-500">
+                              /{item.uqc}
+                            </span>
+                          </div>
+                          {mrpSave > 0 && (
+                            <div className="text-[10px] font-mono text-slate-400 line-through tabular-nums">
+                              MRP ₹{item.mrp}
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          className={`text-[10px] font-mono tabular-nums ${
+                            outOfStock
+                              ? 'text-red-600 dark:text-red-400 font-semibold'
+                              : stock <= item.reorderLevel
+                                ? 'text-amber-600 dark:text-amber-400 font-medium'
+                                : 'text-slate-500 dark:text-slate-400'
+                          }`}
+                        >
+                          {outOfStock
+                            ? 'Out'
+                            : formatQtyDisplay(stock, item.uqc, item.isWeighed)}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* RIGHT 5 COLS (42%): Live Bill Tape + Coupons + Cash Denomination Pad + Dynamic UPI QR */}
+          <section className="xl:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] flex flex-col overflow-hidden">
+            {/* Customer Selector + Udhaar Status */}
+            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label
+                  htmlFor="pos-customer-select"
+                  className="text-xs font-semibold text-slate-700 dark:text-slate-300"
+                >
+                  Shopper / Loyalty Account
+                </label>
+                {selectedCustomer && (
+                  <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 tabular-nums">
+                    {selectedCustomer.loyaltyPoints} pts · Limit ₹
+                    {(selectedCustomer.creditLimit || 0).toLocaleString('en-IN')}
+                  </span>
+                )}
+              </div>
               <select
-                id="pos-counter-select"
-                value={selectedCounter}
-                onChange={(e) => setSelectedCounter(e.target.value)}
-                className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:border-teal-600 focus:outline-none"
+                id="pos-customer-select"
+                value={selectedCustomerId}
+                onChange={(e) => {
+                  setSelectedCustomerId(Number(e.target.value));
+                  setRedeemPoints(0);
+                }}
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-100"
               >
-                {workspace.posCounters.map((c) => (
-                  <option key={c.id} value={c.counterCode}>
-                    {c.counterCode} · {c.operatorName} ({c.status})
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {c.phone ? `(${c.phone})` : ''}
                   </option>
                 ))}
               </select>
             </div>
-          )}
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={handleHoldCart}
-            className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 whitespace-nowrap cursor-pointer"
-          >
-            <PauseCircle className="h-3.5 w-3.5" />
-            <span>Hold Cart (F4)</span>
-          </button>
-          <Link
-            href={`/admin/ledgers/${selectedCustomer?.id || 1}`}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-          >
-            <History className="h-3.5 w-3.5" />
-            <span>Shopper Profile</span>
-          </Link>
-          <Link
-            href="/admin/shifts"
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-          >
-            <Wallet className="h-3.5 w-3.5" />
-            <span>Day-End Cash</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* Parked / Held Customer Carts Strip (Inline, Zero Modals) */}
-      {heldCarts.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-2.5">
-          <span className="text-xs font-semibold text-amber-900 mr-1">
-            Parked Carts ({heldCarts.length}):
-          </span>
-          {heldCarts.map((held) => (
-            <button
-              key={held.id}
-              type="button"
-              onClick={() => handleResumeHeldCart(held)}
-              className="inline-flex items-center gap-2 rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-slate-900 hover:border-teal-600 hover:text-teal-800 cursor-pointer"
-            >
-              <PlayCircle className="h-3.5 w-3.5 text-teal-700" />
-              <span>
-                {held.label} · {held.itemCount} items ·{' '}
-                <strong className="font-mono tabular-nums">{formatInr(held.estimatedTotal)}</strong>
-              </span>
-              <span className="text-[11px] text-slate-400">{held.heldAt}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Main Split: Left Fast Barcode/PLU Scanner + Loose Weight + Touch Catalog | Right Live Bill */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-        {/* Left: Barcode Scanner + Quick Essentials + Inline Weighing Bar + Product Grid */}
-        <section className="xl:col-span-7 rounded-lg border border-slate-200 bg-white p-4 space-y-3.5">
-          <form onSubmit={handleBarcodeSubmit} className="space-y-1.5">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="relative flex-1">
-                <ScanBarcode className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-teal-700" />
-                <label htmlFor="pos-barcode-input" className="sr-only">
-                  Scan EAN barcode, PLU code, or qty*barcode
-                </label>
-                <input
-                  ref={barcodeInputRef}
-                  id="pos-barcode-input"
-                  type="text"
-                  value={barcodeQuery}
-                  onChange={(e) => setBarcodeQuery(e.target.value)}
-                  placeholder="Scan barcode, PLU (200101), or qty*code (e.g. 3*8901262010016, 0.5*200101)…"
-                  className="w-full rounded-md border border-slate-300 bg-slate-50 pl-9 pr-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none"
-                />
-              </div>
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center gap-1.5 rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Search className="h-4 w-4" />
-                <span>Scan / Add</span>
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 font-mono">
-              <span>F2: Focus Scan</span>
-              <span>F4: Hold Cart</span>
-              <span>F8: Exact Cash</span>
-              <span>F9: Exact UPI</span>
-              <span>F12: Complete &amp; Print</span>
-            </div>
-          </form>
-
-          {/* 1-Tap Supermarket Quick Essentials Strip */}
-          {quickEssentialItems.length > 0 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider shrink-0 mr-1">
-                Quick Tap:
-              </span>
-              {quickEssentialItems.map((qItem) => (
-                <button
-                  key={qItem.id}
-                  type="button"
-                  onClick={() => handleTileClick(qItem)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-800 hover:border-teal-600 hover:bg-teal-50/60 hover:text-teal-900 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <span>{qItem.name.split(' ').slice(0, 3).join(' ')}</span>
-                  <span className="font-mono text-[11px] text-teal-800 font-semibold tabular-nums">
-                    ₹{qItem.saleRate}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Inline Loose-Weight Selector Bar (Zero Modals!) */}
-          {weighingItem && (
-            <div className="rounded-lg border border-teal-300 bg-teal-50/70 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Scale className="h-4 w-4 text-teal-800 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-slate-900 truncate">
-                      Weigh &amp; Add: {weighingItem.name}
-                    </div>
-                    <div className="text-xs text-teal-900 font-mono tabular-nums">
-                      PLU {weighingItem.barcode} · ₹{weighingItem.saleRate.toFixed(2)} / KG (MRP ₹
-                      {weighingItem.mrp}/KG)
-                    </div>
-                  </div>
+            {/* Live Bill Line Items */}
+            <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 px-3.5">
+              {calculatedBill.lines.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                  Basket is empty. Scan a barcode, use camera, or tap any product tile.
                 </div>
-                <button
-                  type="button"
-                  aria-label="Cancel loose weight entry"
-                  onClick={() => setWeighingItem(null)}
-                  className="rounded p-1 text-slate-500 hover:bg-white hover:text-slate-900 cursor-pointer"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {QUICK_WEIGHT_PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => handleAddWeighedQty(preset.kg)}
-                    className="rounded-md border border-teal-600 bg-white px-3 py-1.5 text-xs font-semibold text-teal-900 hover:bg-teal-700 hover:text-white transition-colors cursor-pointer"
-                  >
-                    {preset.label} (₹{(weighingItem.saleRate * preset.kg).toFixed(0)})
-                  </button>
-                ))}
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <label htmlFor="custom-kg-input" className="text-xs font-medium text-slate-700">
-                    Custom KG:
-                  </label>
-                  <input
-                    id="custom-kg-input"
-                    type="number"
-                    step="0.05"
-                    min="0.05"
-                    value={customKgInput}
-                    onChange={(e) => setCustomKgInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddWeighedQty(Number(customKgInput));
-                      }
-                    }}
-                    className="w-20 rounded-md border border-teal-400 bg-white px-2 py-1.5 text-right font-mono text-xs text-slate-900 focus:border-teal-700 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleAddWeighedQty(Number(customKgInput))}
-                    className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 cursor-pointer"
-                  >
-                    Add KG
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Supermarket Department / Category Filter */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategoryFilter(cat)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  categoryFilter === cat
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
-          {/* Touch-Screen Supermarket Product Tiles */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {filteredItems.map((item) => {
-              const stock = itemStockMap.get(item.id);
-              const qtyInCart = cart.find((c) => c.item.id === item.id)?.qty || 0;
-              const matchingScheme = workspace.schemes.find(
-                (s) =>
-                  s.active &&
-                  (s.barcodeOrCategory === item.barcode ||
-                    s.barcodeOrCategory.toLowerCase() === item.category.toLowerCase())
-              );
-              const unitSave = Math.max(0, round2(item.mrp - item.saleRate));
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleTileClick(item)}
-                  className={`text-left rounded-lg border p-3 transition-colors focus-visible:outline-2 focus-visible:outline-teal-600 cursor-pointer ${
-                    qtyInCart > 0
-                      ? 'border-teal-600 bg-teal-50/40'
-                      : 'border-slate-200 bg-white hover:border-teal-600/50 hover:bg-slate-50/60'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-semibold text-slate-900 leading-snug line-clamp-2">
-                      {item.name}
-                    </span>
-                    {qtyInCart > 0 ? (
-                      <span className="font-mono text-xs font-bold text-teal-800 shrink-0 tabular-nums">
-                        {item.isWeighed ? `${qtyInCart}kg` : `×${qtyInCart}`}
-                      </span>
-                    ) : item.isWeighed ? (
-                      <Scale className="h-3.5 w-3.5 text-emerald-700 shrink-0 mt-0.5" />
-                    ) : null}
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-500 font-mono tabular-nums truncate">
-                    {item.isWeighed ? `PLU ${item.barcode}` : item.barcode} · {item.rackLocation}
-                  </div>
-                  <div className="mt-2 flex items-baseline justify-between gap-1.5">
-                    <div className="flex items-baseline gap-1.5 min-w-0">
-                      <span className="font-mono text-base font-bold text-slate-900 tabular-nums whitespace-nowrap">
-                        ₹{item.saleRate.toFixed(2)}
-                      </span>
-                      {item.isWeighed && (
-                        <span className="text-[11px] font-medium text-slate-500">/kg</span>
-                      )}
-                    </div>
-                    <div className="text-[11px] font-mono tabular-nums whitespace-nowrap truncate">
-                      {unitSave > 0 && (
-                        <span className="line-through text-slate-400 mr-1">₹{item.mrp}</span>
-                      )}
-                      <span className="text-slate-500">{item.taxSlab}%</span>
-                    </div>
-                  </div>
-                  <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-mono tabular-nums">
-                      Stock: {formatQtyDisplay(stock?.totalQty ?? 0, item.uqc, item.isWeighed)}
-                    </span>
-                    {matchingScheme && workspace.controlRoom.autoApplySchemes ? (
-                      <span className="font-medium text-teal-700 truncate max-w-[120px]">
-                        {matchingScheme.schemeType === 'BUY_X_GET_Y'
-                          ? `${matchingScheme.minQty}+${matchingScheme.freeQty} Free`
-                          : `${matchingScheme.discountPercent}% Offer`}
-                      </span>
-                    ) : unitSave > 0 ? (
-                      <span className="font-medium text-emerald-700 tabular-nums">
-                        Save ₹{unitSave}
-                      </span>
-                    ) : null}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Right: Shopper, Live Supermarket Bill, MRP Savings & Multi-Payment */}
-        <section className="xl:col-span-5 rounded-lg border border-slate-200 bg-white p-4 space-y-4">
-          {/* Shopper & Loyalty Account */}
-          <div className="space-y-2 pb-3 border-b border-slate-100">
-            <div className="flex items-center justify-between">
-              <label
-                htmlFor="pos-customer-select"
-                className="text-xs font-semibold text-slate-700"
-              >
-                Shopper / Loyalty Member
-              </label>
-              {selectedCustomer && (
-                <span className="text-xs font-mono text-teal-800 tabular-nums">
-                  {selectedCustomer.loyaltyPoints} pts available
-                </span>
-              )}
-            </div>
-            <select
-              id="pos-customer-select"
-              value={selectedCustomerId}
-              onChange={(e) => {
-                setSelectedCustomerId(Number(e.target.value));
-                setRedeemPoints(0);
-              }}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
-            >
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} {c.phone ? `(${c.phone})` : ''} — {c.loyaltyPoints} pts
-                </option>
-              ))}
-            </select>
-            {selectedCustomer && (
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                <span>
-                  {isInterState ? 'Inter-State IGST' : 'Intra-State CGST + SGST'} ·{' '}
-                  {selectedCustomer.gstin || 'Retail B2C'}
-                </span>
-                {workspace.controlRoom.enableLoyaltyPoints &&
-                  selectedCustomer.loyaltyPoints > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <label htmlFor="pos-redeem-pts" className="text-slate-600">
-                        Redeem pts:
-                      </label>
-                      <input
-                        id="pos-redeem-pts"
-                        type="number"
-                        min={0}
-                        max={selectedCustomer.loyaltyPoints}
-                        value={redeemPoints}
-                        onChange={(e) =>
-                          setRedeemPoints(Math.max(0, Number(e.target.value) || 0))
-                        }
-                        className="w-20 rounded border border-slate-300 px-2 py-0.5 text-right font-mono text-xs text-slate-900"
-                      />
-                    </div>
-                  )}
-              </div>
-            )}
-          </div>
-
-          {/* Active Basket Line Items */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-slate-900">
-                Basket ({calculatedBill.lines.length} items)
-              </h2>
-              {cart.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCart([]);
-                    setPayments([{ mode: 'Cash', amount: 0, reference: '' }]);
-                  }}
-                  className="text-xs text-red-700 hover:underline cursor-pointer"
-                >
-                  Clear Basket
-                </button>
-              )}
-            </div>
-
-            {calculatedBill.lines.length === 0 ? (
-              <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-7 text-center">
-                <p className="text-sm font-medium text-slate-600">
-                  Ready for next supermarket shopper
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Tap any item tile, try loose produce (kg), or scan{' '}
-                  <span className="font-mono text-slate-700">2*8901526100105</span>.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto pr-1">
-                {calculatedBill.lines.map((line) => {
-                  const matchedItem = workspace.items.find((it) => it.id === line.itemId);
-                  const step = matchedItem?.isWeighed ? 0.25 : 1;
+              ) : (
+                calculatedBill.lines.map((ln) => {
+                  const isKg = ln.uqc === 'KG';
                   return (
                     <div
-                      key={line.itemId}
-                      className="py-2.5 flex items-start justify-between gap-2"
+                      key={ln.itemId}
+                      className="py-2.5 flex items-center justify-between gap-2 text-xs"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-slate-900 truncate">
-                          {line.name}
+                        <div className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                          {ln.name}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono tabular-nums">
-                          {line.mrp > line.rate && (
-                            <span className="line-through text-slate-400 mr-1.5">
-                              MRP ₹{line.mrp}
-                            </span>
-                          )}
-                          <span>₹{line.rate.toFixed(2)}/{line.uqc}</span>
-                          <span> · GST {line.taxSlab}%</span>
-                          {line.discountPercent > 0 ? ` · -${line.discountPercent}%` : ''}
-                          {line.freeQty > 0 ? ` · +${line.freeQty} FREE` : ''}
+                        <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 tabular-nums">
+                          ₹{ln.rate} × {ln.qty} {ln.uqc}
+                          {ln.freeQty > 0 ? ` (+${ln.freeQty} Free)` : ''}
+                          {ln.taxSlab > 0 ? ` · ${ln.taxSlab}% GST` : ' · 0% GST'}
                         </div>
-                        {line.appliedSchemeName && (
-                          <div className="text-[11px] font-medium text-teal-700 truncate">
-                            Offer: {line.appliedSchemeName}
-                          </div>
-                        )}
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
-                          aria-label={`Decrease quantity for ${line.name}`}
-                          onClick={() => updateLineQty(line.itemId, -step)}
-                          className="h-7 w-7 flex items-center justify-center rounded border border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
+                          onClick={() => updateCartQty(ln.itemId, -1)}
+                          aria-label={`Decrease ${ln.name}`}
+                          className="rounded border border-slate-200 dark:border-slate-700 p-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                         >
-                          <Minus className="h-3.5 w-3.5" />
+                          <Minus className="h-3 w-3" />
                         </button>
-                        <span className="min-w-11 text-center font-mono text-xs font-semibold tabular-nums">
-                          {matchedItem?.isWeighed ? `${line.qty}kg` : line.qty}
+                        <span className="w-12 text-center font-mono font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                          {isKg ? `${ln.qty}` : ln.qty}
                         </span>
                         <button
                           type="button"
-                          aria-label={`Increase quantity for ${line.name}`}
-                          onClick={() => updateLineQty(line.itemId, step)}
-                          className="h-7 w-7 flex items-center justify-center rounded border border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
+                          onClick={() => updateCartQty(ln.itemId, 1)}
+                          aria-label={`Increase ${ln.name}`}
+                          className="rounded border border-slate-200 dark:border-slate-700 p-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                         >
-                          <Plus className="h-3.5 w-3.5" />
+                          <Plus className="h-3 w-3" />
                         </button>
-                        <span className="w-20 text-right font-mono text-sm font-semibold text-slate-900 tabular-nums">
-                          ₹{line.lineTotal.toFixed(2)}
-                        </span>
+                        <div className="w-16 text-right font-mono font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                          ₹{ln.lineTotal.toFixed(0)}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCart((prev) => prev.filter((c) => c.item.id !== ln.itemId))
+                          }
+                          aria-label={`Remove ${ln.name}`}
+                          className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
                   );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Live Supermarket MRP Savings Banner */}
-          {calculatedBill.totalMrpSavings > 0 && (
-            <div className="flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs text-emerald-900">
-              <span className="inline-flex items-center gap-1.5 font-semibold">
-                <Sparkles className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
-                <span>Shopper Total Savings on MRP</span>
-              </span>
-              <span className="font-mono text-sm font-bold tabular-nums text-emerald-800">
-                {formatInr(calculatedBill.totalMrpSavings)}
-              </span>
-            </div>
-          )}
-
-          {/* GST & Tax Summary */}
-          <div className="rounded-md bg-slate-50 p-3 space-y-1.5 text-xs border border-slate-200">
-            <div className="flex justify-between text-slate-600">
-              <span>Store Rate Subtotal</span>
-              <span className="font-mono tabular-nums">
-                {formatInr(calculatedBill.subtotal)}
-              </span>
-            </div>
-            <div className="flex justify-between text-slate-600">
-              <span>Scheme &amp; Loyalty Discount</span>
-              <span className="font-mono tabular-nums text-teal-800">
-                -{formatInr(calculatedBill.discountAmount)}
-              </span>
-            </div>
-            {isInterState ? (
-              <div className="flex justify-between text-slate-600">
-                <span>IGST (Inter-State)</span>
-                <span className="font-mono tabular-nums">
-                  {formatInr(calculatedBill.igstAmount)}
-                </span>
-              </div>
-            ) : (
-              <div className="flex justify-between text-slate-600">
-                <span>CGST + SGST</span>
-                <span className="font-mono tabular-nums">
-                  {formatInr(calculatedBill.cgstAmount)} +{' '}
-                  {formatInr(calculatedBill.sgstAmount)}
-                </span>
-              </div>
-            )}
-            <div className="flex justify-between items-baseline pt-2 border-t border-slate-200">
-              <span className="text-sm font-bold text-slate-900">Net Payable</span>
-              <span
-                data-testid="pos-grand-total"
-                className="font-mono text-xl font-bold text-teal-800 tabular-nums"
-              >
-                {formatInr(calculatedBill.grandTotal)}
-              </span>
-            </div>
-            {workspace.controlRoom.enableLoyaltyPoints && calculatedBill.loyaltyEarned > 0 && (
-              <div className="text-[11px] text-teal-700 text-right font-medium">
-                +{calculatedBill.loyaltyEarned} supermarket loyalty points will be credited
-              </div>
-            )}
-          </div>
-
-          {/* Multi-Payment Settlement Panel */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700">
-                Quick Tender &amp; Split Payment
-              </span>
-              <button
-                type="button"
-                onClick={addSplitPaymentRow}
-                className="text-xs font-medium text-teal-700 hover:underline whitespace-nowrap cursor-pointer"
-              >
-                + Split Mode
-              </button>
-            </div>
-
-            {/* Quick Exact Tender Buttons */}
-            <div className="grid grid-cols-5 gap-1.5">
-              {(
-                [
-                  { mode: 'Cash', hint: 'F8' },
-                  { mode: 'UPI', hint: 'F9' },
-                  { mode: 'Card', hint: '' },
-                  { mode: 'Wallet', hint: '' },
-                  { mode: 'PDC', hint: '' },
-                ] as Array<{ mode: PaymentMode; hint: string }>
-              ).map(({ mode, hint }) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setExactPaymentForSingleMode(mode)}
-                  className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-teal-600 hover:text-teal-800 whitespace-nowrap cursor-pointer"
-                >
-                  {mode}
-                  {hint ? <span className="ml-1 text-[10px] text-slate-400">{hint}</span> : null}
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-2">
-              {payments.map((pay, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <select
-                    aria-label={`Payment mode ${idx + 1}`}
-                    value={pay.mode}
-                    onChange={(e) =>
-                      updatePaymentRow(idx, { mode: e.target.value as PaymentMode })
-                    }
-                    className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-900"
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="UPI">UPI</option>
-                    <option value="Card">Card</option>
-                    <option value="Wallet">Wallet</option>
-                    <option value="PDC">PDC</option>
-                  </select>
-                  <input
-                    aria-label={`Payment amount ${idx + 1}`}
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={pay.amount || ''}
-                    onChange={(e) =>
-                      updatePaymentRow(idx, { amount: Number(e.target.value) || 0 })
-                    }
-                    placeholder="Amount ₹"
-                    className="w-28 rounded-md border border-slate-300 px-2.5 py-1.5 text-right font-mono text-xs text-slate-900"
-                  />
-                  <input
-                    aria-label={`Payment reference ${idx + 1}`}
-                    type="text"
-                    value={pay.reference || ''}
-                    onChange={(e) => updatePaymentRow(idx, { reference: e.target.value })}
-                    placeholder="UTR / Ref No."
-                    className="flex-1 min-w-0 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900"
-                  />
-                  {payments.length > 1 && (
-                    <button
-                      type="button"
-                      aria-label={`Remove payment split ${idx + 1}`}
-                      onClick={() => removePaymentRow(idx)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-between text-xs font-mono tabular-nums text-slate-600">
-              <span>Tendered: {formatInr(paymentValidation.totalTendered)}</span>
-              {paymentValidation.changeToReturn > 0 ? (
-                <span className="text-emerald-700 font-semibold">
-                  Return Change: {formatInr(paymentValidation.changeToReturn)}
-                </span>
-              ) : (
-                <span>Balance Due: {formatInr(paymentValidation.balanceDue)}</span>
+                })
               )}
             </div>
 
-            {checkoutError && (
-              <div
-                role="alert"
-                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800"
-              >
-                {checkoutError}
+            {/* Promo Coupon & Loyalty Section */}
+            <div className="px-3.5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 space-y-2.5">
+              <div className="flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                <input
+                  type="text"
+                  value={couponInput}
+                  onChange={(e) => {
+                    setCouponInput(e.target.value.toUpperCase());
+                    setCouponError(null);
+                  }}
+                  placeholder="Promo coupon (FRESH50, WEEKEND10)"
+                  className="flex-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100"
+                />
+                {appliedCoupon ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppliedCoupon(null);
+                      setCouponInput('');
+                    }}
+                    className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-red-600 cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleApplyCouponCode(couponInput)}
+                    className="rounded-md bg-slate-900 dark:bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 cursor-pointer"
+                  >
+                    Apply
+                  </button>
+                )}
               </div>
-            )}
 
-            <button
-              type="button"
-              onClick={() => void handleCompleteSale()}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 transition-colors cursor-pointer"
-            >
-              <CreditCard className="h-4 w-4" />
-              <span>Complete &amp; Print Supermarket Bill (F12)</span>
-            </button>
-          </div>
-        </section>
-      </div>
+              {activeCoupons.length > 0 && !appliedCoupon && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {activeCoupons.slice(0, 3).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleApplyCouponCode(c.code)}
+                      className="rounded border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[10px] font-mono font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 cursor-pointer"
+                    >
+                      {c.code} (Min ₹{c.minBillAmount})
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {couponError && (
+                <div className="text-[11px] font-medium text-red-600 dark:text-red-400">
+                  {couponError}
+                </div>
+              )}
+
+              {workspace.controlRoom.enableLoyaltyPoints &&
+                selectedCustomer &&
+                selectedCustomer.loyaltyPoints > 0 && (
+                  <div className="flex items-center justify-between gap-2 text-xs pt-1 border-t border-slate-200/70 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-400">
+                      Redeem Points (Avail: {selectedCustomer.loyaltyPoints})
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={selectedCustomer.loyaltyPoints}
+                      value={redeemPoints}
+                      onChange={(e) => setRedeemPoints(Math.max(0, Number(e.target.value)))}
+                      className="w-20 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-right font-mono text-xs text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                )}
+            </div>
+
+            {/* Bill Totals & Live MRP Savings Banner */}
+            <div className="px-3.5 py-3 border-t border-slate-200 dark:border-slate-800 space-y-1.5 text-xs">
+              <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                <span>Subtotal · GST ({isInterState ? 'IGST' : 'CGST+SGST'})</span>
+                <span className="font-mono tabular-nums">
+                  {formatInr(calculatedBill.subtotal)} · +{formatInr(calculatedBill.totalTax)}
+                </span>
+              </div>
+              {calculatedBill.couponDiscountAmount > 0 && (
+                <div className="flex justify-between text-emerald-700 dark:text-emerald-400 font-medium">
+                  <span>Coupon ({calculatedBill.couponCode})</span>
+                  <span className="font-mono tabular-nums">
+                    -{formatInr(calculatedBill.couponDiscountAmount)}
+                  </span>
+                </div>
+              )}
+              {calculatedBill.loyaltyDiscountAmount > 0 && (
+                <div className="flex justify-between text-emerald-700 dark:text-emerald-400 font-medium">
+                  <span>Loyalty Redeemed</span>
+                  <span className="font-mono tabular-nums">
+                    -{formatInr(calculatedBill.loyaltyDiscountAmount)}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-baseline justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Grand Total
+                </span>
+                <span className="font-mono text-2xl font-bold text-slate-950 dark:text-white tabular-nums">
+                  {formatInr(calculatedBill.grandTotal)}
+                </span>
+              </div>
+              {calculatedBill.totalMrpSavings > 0 && (
+                <div className="flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                  <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="font-mono tabular-nums">
+                    Customer Saves {formatInr(calculatedBill.totalMrpSavings)} on MRP!
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Multi-Mode Payment + Fast Cash Notes + Dynamic UPI QR */}
+            <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 space-y-3">
+              {/* Quick Mode Selector */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                {(['Cash', 'UPI', 'Card', 'Credit', 'Wallet', 'PDC'] as PaymentMode[]).map(
+                  (mode) => {
+                    const isSelected =
+                      effectivePayments.length === 1 && effectivePayments[0].mode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setQuickPaymentMode(mode)}
+                        className={`rounded-md border px-2 py-1.5 text-[11px] font-semibold transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-700 bg-emerald-700 text-white'
+                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-emerald-500'
+                        }`}
+                      >
+                        {mode === 'Credit' ? 'Udhaar' : mode}
+                      </button>
+                    );
+                  }
+                )}
+              </div>
+
+              {/* Payment Split Rows */}
+              <div className="space-y-1.5">
+                {effectivePayments.map((split, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5">
+                    <select
+                      value={split.mode}
+                      onChange={(e) => {
+                        const next = [...effectivePayments];
+                        next[idx] = { ...next[idx], mode: e.target.value as PaymentMode };
+                        setPayments(next);
+                      }}
+                      className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="UPI">UPI</option>
+                      <option value="Card">Card</option>
+                      <option value="Credit">Credit (Udhaar)</option>
+                      <option value="Wallet">Wallet</option>
+                      <option value="PDC">PDC</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={split.amount}
+                      onChange={(e) => {
+                        const next = [...effectivePayments];
+                        next[idx] = { ...next[idx], amount: Number(e.target.value) };
+                        setPayments(next);
+                      }}
+                      className="flex-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-right font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums"
+                    />
+                    {effectivePayments.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPayments(effectivePayments.filter((_, i) => i !== idx))
+                        }
+                        className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addSplitPaymentRow}
+                  className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                >
+                  + Split Payment (e.g. Cash + UPI)
+                </button>
+              </div>
+
+              {/* Fast Indian Cash Denomination Pad + Instant Change to Return */}
+              {hasCashPayment && calculatedBill.grandTotal > 0 && (
+                <div className="space-y-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-2.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleFastCashTender(calculatedBill.grandTotal)}
+                      className="rounded border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 dark:text-emerald-200 cursor-pointer"
+                    >
+                      Exact
+                    </button>
+                    {INDIAN_CASH_NOTES.map((note) => (
+                      <button
+                        key={note}
+                        type="button"
+                        onClick={() => handleFastCashTender(note)}
+                        className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-1 font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:border-emerald-500 cursor-pointer"
+                      >
+                        ₹{note}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => handleFastCashTender(20, true)}
+                      className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-1 font-mono text-[11px] text-slate-600 dark:text-slate-300 hover:border-emerald-500 cursor-pointer"
+                    >
+                      +₹20
+                    </button>
+                  </div>
+                  {paymentValidation.changeToReturn > 0 && (
+                    <div className="flex items-center justify-between rounded-md bg-emerald-700 px-3 py-2 text-white">
+                      <span className="text-xs font-medium">Change to Return</span>
+                      <span className="font-mono text-lg font-bold tabular-nums">
+                        {formatInr(paymentValidation.changeToReturn)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Inline Dynamic Scannable UPI QR Code */}
+              {hasUpiPayment && calculatedBill.grandTotal > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-3">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100">
+                      <QrCode className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Dynamic UPI QR</span>
+                    </div>
+                    <div className="font-mono text-base font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                      {formatInr(upiSplitAmount || calculatedBill.grandTotal)}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Mirrored live to Customer Display
+                    </div>
+                  </div>
+                  <UpiQrCodeSvg
+                    vpa={storeUpiVpa}
+                    payeeName={activeCompany?.name || 'FreshMart Superstore'}
+                    amount={upiSplitAmount || calculatedBill.grandTotal}
+                    note={`POS ${selectedCounter}`}
+                    size={96}
+                  />
+                </div>
+              )}
+
+              {/* Udhaar Credit Limit Notice */}
+              {creditSplitAmount > 0 && (
+                <div
+                  className={`rounded-lg border px-3 py-2 text-xs ${
+                    udhaarCheck.allowed
+                      ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200'
+                      : 'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200'
+                  }`}
+                >
+                  {udhaarCheck.allowed
+                    ? `Udhaar Approved · Available credit: ${formatInr(udhaarCheck.availableLimit)}`
+                    : udhaarCheck.error}
+                </div>
+              )}
+
+              {checkoutError && (
+                <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-3 py-2 text-xs font-medium text-red-800 dark:text-red-200">
+                  {checkoutError}
+                </div>
+              )}
+
+              {/* Primary Checkout Save & Print CTA */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCompleteCheckout()}
+                  disabled={cart.length === 0}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 disabled:opacity-40 px-4 py-3 text-sm font-bold text-white cursor-pointer"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  <span>Save &amp; Print Bill (F12)</span>
+                </button>
+                <Link
+                  href="/admin/sales"
+                  title="Recent Bills History"
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                >
+                  <History className="h-4 w-4" />
+                </Link>
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                <span>F2 Scan · F4 Hold · F8 Cash · F9 UPI · F12 Print</span>
+                <span className="inline-flex items-center gap-1">
+                  <Wallet className="h-3 w-3" />
+                  {selectedCounter}
+                </span>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

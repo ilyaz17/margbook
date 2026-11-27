@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import {
   BarChart3,
+  Barcode,
   BookOpen,
   Boxes,
   Building2,
@@ -33,6 +34,7 @@ const ICON_MAP: Record<ModuleId, React.ComponentType<{ className?: string }>> = 
   sales: ReceiptIndianRupee,
   purchases: Truck,
   inventory: Boxes,
+  barcodes: Barcode,
   accounting: ShoppingCart,
   banking: Landmark,
   gst: FileCheck2,
@@ -46,9 +48,14 @@ const ICON_MAP: Record<ModuleId, React.ComponentType<{ className?: string }>> = 
 interface SidebarNavProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  collapsedDesktop?: boolean;
 }
 
-export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
+export function SidebarNav({
+  mobileOpen,
+  onCloseMobile,
+  collapsedDesktop = false,
+}: SidebarNavProps) {
   const { workspace, activeModule, switchCompany } = useMargBooks();
   const activeCompany =
     workspace.companies.find((c) => c.id === workspace.activeCompanyId) ||
@@ -57,7 +64,7 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
   const sections: RouteMeta['section'][] = ['Core', 'Operations', 'Finance & Tax', 'System'];
 
   const navContent = (
-    <div className="flex h-full flex-col bg-[#0C2D35] text-slate-100">
+    <div className="flex h-full flex-col bg-[#071E1A] dark:bg-[#091217] text-slate-100">
       {/* Brand Wordmark */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
         <Link
@@ -65,7 +72,7 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
           onClick={onCloseMobile}
           className="flex items-center gap-2.5 min-w-0"
         >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-teal-500 text-slate-950 font-display font-bold text-sm">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500 text-slate-950 font-display font-bold text-sm">
             M
           </div>
           <span className="font-display text-base font-bold tracking-tight text-white whitespace-nowrap truncate">
@@ -87,15 +94,15 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <label
             htmlFor="company-switcher"
-            className="flex items-center gap-1.5 text-[11px] font-medium text-teal-200/80"
+            className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-200/80"
           >
             <Building2 className="h-3.5 w-3.5 shrink-0" />
-            <span>Active Company</span>
+            <span>Active Store</span>
           </label>
           <Link
             href="/admin/company/setup"
             onClick={onCloseMobile}
-            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-teal-300 hover:text-white whitespace-nowrap"
+            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-300 hover:text-white whitespace-nowrap"
           >
             <Plus className="h-3 w-3" />
             <span>Branch</span>
@@ -105,7 +112,7 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
           id="company-switcher"
           value={workspace.activeCompanyId}
           onChange={(e) => void switchCompany(Number(e.target.value))}
-          className="w-full rounded-md border border-white/15 bg-[#082026] px-2.5 py-1.5 text-xs font-medium text-white focus:border-teal-400 focus:outline-none"
+          className="w-full rounded-md border border-white/15 bg-[#041411] dark:bg-[#0B171E] px-2.5 py-1.5 text-xs font-medium text-white focus:border-emerald-400 focus:outline-none"
         >
           {workspace.companies.map((c) => (
             <option key={c.id} value={c.id}>
@@ -127,7 +134,7 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
           const items = MODULE_ROUTES.filter((item) => item.section === section);
           return (
             <div key={section}>
-              <div className="px-2.5 pb-1 text-[11px] font-medium text-teal-200/60">
+              <div className="px-2.5 pb-1 text-[11px] font-medium text-emerald-200/55">
                 {section}
               </div>
               <ul className="space-y-0.5">
@@ -142,7 +149,7 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
                         aria-current={isActive ? 'page' : undefined}
                         className={`w-full flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
                           isActive
-                            ? 'bg-teal-600 text-white'
+                            ? 'bg-emerald-600 text-white'
                             : 'text-slate-200 hover:bg-white/8 hover:text-white'
                         }`}
                       >
@@ -153,7 +160,7 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
                         {item.shortcut && (
                           <span
                             className={`font-mono text-[10px] shrink-0 ${
-                              isActive ? 'text-teal-100' : 'text-slate-400'
+                              isActive ? 'text-emerald-100' : 'text-slate-400'
                             }`}
                           >
                             {item.shortcut}
@@ -176,7 +183,7 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <span>{activeCompany?.fyLocked ? 'FY Locked' : 'Books Open'}</span>
-          <span className="capitalize text-teal-200/80">{workspace.currentUserRole}</span>
+          <span className="capitalize text-emerald-300/80">{workspace.currentUserRole}</span>
         </div>
       </div>
     </div>
@@ -184,13 +191,15 @@ export function SidebarNav({ mobileOpen, onCloseMobile }: SidebarNavProps) {
 
   return (
     <>
-      <aside className="no-print hidden lg:block w-64 shrink-0 border-r border-slate-200">
-        {navContent}
-      </aside>
+      {!collapsedDesktop && (
+        <aside className="no-print hidden lg:block w-64 shrink-0 border-r border-slate-200 dark:border-slate-800">
+          {navContent}
+        </aside>
+      )}
       {mobileOpen && (
         <div className="no-print fixed inset-0 z-50 flex lg:hidden">
           <div
-            className="fixed inset-0 bg-slate-950/50"
+            className="fixed inset-0 bg-slate-950/60"
             onClick={onCloseMobile}
             aria-hidden="true"
           />

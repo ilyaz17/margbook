@@ -8,13 +8,20 @@ import {
   classifyExpiryStatus,
   computeFinancialStatements,
   evaluateLineScheme,
+  evaluatePromoCoupon,
   generateDeterministicIrn,
   parseBarcodeOrPluInput,
   parsePurchaseImportCsv,
   sanitizeNextPath,
   validateMultiPayments,
+  validateUdhaarLimit,
 } from './erp-engine';
-import type { InventoryItem, Scheme } from '../types/erp';
+import {
+  buildUpiPaymentUri,
+  buildWhatsAppBillText,
+  encodeCode128B,
+} from './barcode-utils';
+import type { InventoryItem, PromoCoupon, Scheme } from '../types/erp';
 
 const sampleGroceryItem: InventoryItem = {
   id: 1,
@@ -366,3 +373,181 @@ test('buildGlobalSearchResults finds supermarket items and modules with routable
   assert.equal(results[0].category, 'Item');
   assert.ok(results[0].href.startsWith('/admin/masters'));
 });
+
+test('parseBarcodeOrPluInput decodes weighted scale EAN-13 stickers into kg and PLU', () => {
+  const parsed = parseBarcodeOrPluInput('2101010125007', '21');
+  assert.equal(parsed.isWeightedBarcode, true);
+  assert.equal(parsed.pluSuffix, '0101');
+  assert.equal(parsed.query, '200101');
+  assert.equal(parsed.qty, 1.25);
+
+  const customPrefix = parseBarcodeOrPluInput('250102005000', '25');
+  assert.equal(customPrefix.isWeightedBarcode, true);
+  assert.equal(customPrefix.query, '200102');
+  assert.equal(customPrefix.qty, 0.5);
+});
+
+test('evaluatePromoCoupon validates flat, percentage cap, min bill, and expiry', () => {
+  const coupons: PromoCoupon[] = [
+    {
+      id: 1,
+      companyId: 1,
+      code: 'FRESH50',
+      description: 'Flat ₹50 off above ₹500',
+      discountType: 'FLAT',
+      discountValue: 50,
+      minBillAmount: 500,
+      maxDiscount: 50,
+      validTill: '2027-03-31',
+      active: true,
+    },
+    {
+      id: 2,
+      companyId: 1,
+      code: 'WEEKEND10',
+      description: '10% off up to ₹150',
+      discountType: 'PERCENT',
+      discountValue: 10,
+      minBillAmount: 1000,
+      maxDiscount: 150,
+      validTill: '2027-03-31',
+      active: true,
+    },
+  ];
+
+  const tooLow = evaluatePromoCoupon({
+    code: 'FRESH50',
+    coupons,
+    billTotalBeforeCoupon: 420,
+    asOfDate: '2026-11-26',
+  });
+  assert.equal(tooLow.valid, false);
+
+  const flatOk = evaluatePromoCoupon({
+    code: 'fresh50',
+    coupons,
+    billTotalBeforeCoupon: 650,
+    asOfDate: '2026-11-26',
+  });
+  assert.equal(flatOk.valid, true);
+  assert.equal(flatOk.discountAmount, 50);
+
+  const cappedPct = evaluatePromoCoupon({
+    code: 'WEEKEND10',
+    coupons,
+    billTotalBeforeCoupon: 2400,
+    asOfDate: '2026-11-26',
+  });
+  assert.equal(cappedPct.valid, true);
+  assert.equal(cappedPct.discountAmount, 150);
+
+  const billWithCoupon = calculateInvoiceTotals({
+    cartLines: [
+      {
+        item: sampleGroceryItem,
+        batchNo: 'BR26A',
+        expiryDate: '2027-08-31',
+        qty: 20,
+      },
+    ],
+    schemes: [],
+    autoApplySchemes: false,
+    asOfDate: '2026-11-26',
+    isInterState: false,
+    redeemPoints: 0,
+    availableCustomerPoints: 0,
+    loyaltyPointValue: 1,
+    loyaltyEarnPer100: 2,
+    enableLoyaltyPoints: false,
+    promoCoupon: coupons[0],
+  });
+  // 20 * 30 = 600 + 72 GST = 672 - 50 coupon = 622
+  assert.equal(billWithCoupon.couponCode, 'FRESH50');
+  assert.equal(billWithCoupon.couponDiscountAmount, 50);
+  assert.equal(billWithCoupon.grandTotal, 622);
+});
+
+test('validateUdhaarLimit enforces customer credit limit and blocks walk-ins', () => {
+  const noCust = validateUdhaarLimit({ creditAmount: 500 });
+  assert.equal(noCust.allowed, false);
+
+  const ok = validateUdhaarLimit({
+    customer: {
+      name: 'Meenakshi Family Store',
+      currentBalance: 1200,
+      balanceType: 'Dr',
+      creditLimit: 5000,
+    },
+    creditAmount: 2500,
+  });
+  assert.equal(ok.allowed, true);
+  assert.equal(ok.availableLimit, 3800);
+
+  const exceeded = validateUdhaarLimit({
+    customer: {
+      name: 'Meenakshi Family Store',
+      currentBalance: 4500,
+      balanceType: 'Dr',
+      creditLimit: 5000,
+    },
+    creditAmount: 800,
+  });
+  assert.equal(exceeded.allowed, false);
+});
+
+test('encodeCode128B, buildUpiPaymentUri, and buildWhatsAppBillText generate valid outputs', () => {
+  const encoded = encodeCode128B('8901526100105');
+  assert.equal(encoded.encodedText, '8901526100105');
+  assert.ok(encoded.bars.length > 30);
+  assert.ok(encoded.totalWidth > 100);
+
+  const uri = buildUpiPaymentUri({
+    vpa: 'freshmart@upi',
+    payeeName: 'FreshMart Superstore',
+    amount: 645.5,
+    note: 'Bill POS-26-0101',
+  });
+  assert.ok(uri.startsWith('upi://pay?'));
+  assert.ok(uri.includes('pa=freshmart%40upi'));
+  assert.ok(uri.includes('am=645.50'));
+  assert.ok(uri.includes('cu=INR'));
+
+  const msg = buildWhatsAppBillText({
+    companyName: 'FreshMart Superstore',
+    invoiceNo: 'POS-26-0101',
+    invoiceDate: '2026-11-26',
+    customerName: 'Ramesh Iyer',
+    items: [
+      {
+        itemId: 1,
+        barcode: '8901063014121',
+        name: 'Britannia Good Day 200g',
+        hsnCode: '19053100',
+        batchNo: 'BR26A',
+        expiryDate: '2027-08-31',
+        uqc: 'PKT',
+        qty: 2,
+        freeQty: 0,
+        mrp: 40,
+        rate: 30,
+        discountPercent: 0,
+        discountAmount: 0,
+        taxSlab: 12,
+        taxableValue: 60,
+        taxAmount: 7.2,
+        lineTotal: 67.2,
+      },
+    ],
+    grandTotal: 67,
+    totalMrpSavings: 20,
+    couponCode: 'FRESH50',
+    couponDiscount: 50,
+    loyaltyEarned: 2,
+    upiVpa: 'freshmart@upi',
+  });
+  assert.ok(msg.includes('FreshMart Superstore'));
+  assert.ok(msg.includes('POS-26-0101'));
+  assert.ok(msg.includes('You Saved ₹20.00'));
+  assert.ok(msg.includes('freshmart@upi'));
+});
+

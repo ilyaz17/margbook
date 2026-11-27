@@ -12,6 +12,7 @@ export type ModuleId =
   | 'reports'
   | 'control-room'
   | 'shifts'
+  | 'barcodes'
   | 'company-setup'
   | 'search';
 
@@ -122,6 +123,19 @@ export interface Scheme {
   active: boolean;
 }
 
+export interface PromoCoupon {
+  id: number;
+  companyId: number;
+  code: string;
+  description: string;
+  discountType: 'FLAT' | 'PERCENT';
+  discountValue: number;
+  minBillAmount: number;
+  maxDiscount: number;
+  validTill: string;
+  active: boolean;
+}
+
 export interface InvoiceLineItem {
   itemId: number;
   barcode: string;
@@ -162,7 +176,7 @@ export interface HeldCart {
   }>;
 }
 
-export type PaymentMode = 'Cash' | 'UPI' | 'Card' | 'Wallet' | 'PDC';
+export type PaymentMode = 'Cash' | 'UPI' | 'Card' | 'Wallet' | 'PDC' | 'Credit';
 
 export interface PaymentSplit {
   mode: PaymentMode;
@@ -198,6 +212,8 @@ export interface InvoiceRecord {
   grandTotal: number;
   loyaltyEarned: number;
   loyaltyRedeemed: number;
+  couponCode?: string;
+  couponDiscount?: number;
   paymentModeSummary: string;
   payments: PaymentSplit[];
   items: InvoiceLineItem[];
@@ -301,6 +317,7 @@ export interface PosCounter {
   cardSales: number;
   walletSales: number;
   pdcSales: number;
+  creditSales?: number;
   status: 'OPEN' | 'CLOSED';
   lastClosedAt: string;
 }
@@ -320,6 +337,8 @@ export interface ControlRoomConfig {
   invoiceHeaderTitle: string;
   invoiceTerms: string;
   thermalPaperWidth: '58mm' | '80mm' | 'A4';
+  upiVpa: string;
+  weightedBarcodePrefix: string;
   lastBooksRebuildAt: string;
   lastBackupAt: string;
 }
@@ -367,6 +386,7 @@ export interface WorkspaceData {
   batches: ItemBatch[];
   bomRecipes: BomRecipe[];
   schemes: Scheme[];
+  promoCoupons: PromoCoupon[];
   invoices: InvoiceRecord[];
   purchases: PurchaseRecord[];
   vouchers: VoucherRecord[];
@@ -376,4 +396,31 @@ export interface WorkspaceData {
   shiftHandovers: ShiftHandoverRecord[];
   controlRoom: ControlRoomConfig;
   operators: OperatorRole[];
+}
+
+export interface CustomerDisplaySnapshot {
+  updatedAt: string;
+  storeName: string;
+  branchName: string;
+  counterCode: string;
+  customerName: string;
+  upiVpa: string;
+  lines: Array<{
+    name: string;
+    qty: number;
+    uqc: string;
+    mrp: number;
+    rate: number;
+    lineTotal: number;
+  }>;
+  subtotal: number;
+  totalTax: number;
+  couponCode: string;
+  couponDiscount: number;
+  loyaltyDiscount: number;
+  totalMrpSavings: number;
+  grandTotal: number;
+  upiAmount: number;
+  status: 'IDLE' | 'SCANNING' | 'AWAITING_PAYMENT' | 'PAID';
+  lastInvoiceNo?: string;
 }

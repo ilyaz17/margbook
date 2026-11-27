@@ -32,13 +32,13 @@ function FormPageHeader({
     <div className="mb-6">
       <Link
         href={backHref}
-        className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900"
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         <span>{backLabel}</span>
       </Link>
-      <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
-      <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+      <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{title}</h1>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
     </div>
   );
 }
@@ -90,11 +90,11 @@ export function NewLedgerPage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2">
-            <label htmlFor="nl-name" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-name" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Account / Party Name
             </label>
             <input
@@ -103,19 +103,19 @@ export function NewLedgerPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Metro Cash & Carry Wholesale"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="nl-group" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-group" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Account Group
             </label>
             <select
               id="nl-group"
               value={groupType}
               onChange={(e) => setGroupType(e.target.value as LedgerGroup)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             >
               {(['Customer', 'Supplier', 'Bank', 'Cash', 'Expense', 'Income', 'Tax'] as LedgerGroup[]).map(
                 (g) => (
@@ -128,7 +128,7 @@ export function NewLedgerPage() {
           </div>
 
           <div>
-            <label htmlFor="nl-gstin" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-gstin" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               GSTIN (Optional)
             </label>
             <input
@@ -136,12 +136,12 @@ export function NewLedgerPage() {
               value={gstin}
               onChange={(e) => setGstin(e.target.value.toUpperCase())}
               placeholder="07AABCS1429B1ZB"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm uppercase focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm uppercase focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="nl-phone" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-phone" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Phone Number
             </label>
             <input
@@ -149,12 +149,12 @@ export function NewLedgerPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+91 98110 44210"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="nl-email" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-email" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Email Address
             </label>
             <input
@@ -163,12 +163,12 @@ export function NewLedgerPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="accounts@party.in"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="nl-state" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-state" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               GST State Code
             </label>
             <input
@@ -176,12 +176,12 @@ export function NewLedgerPage() {
               value={stateCode}
               onChange={(e) => setStateCode(e.target.value)}
               placeholder="07"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="nl-limit" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-limit" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Credit Limit (INR)
             </label>
             <input
@@ -189,12 +189,12 @@ export function NewLedgerPage() {
               type="number"
               value={creditLimit}
               onChange={(e) => setCreditLimit(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="nl-opbal" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-opbal" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Opening Balance (INR)
             </label>
             <input
@@ -203,19 +203,19 @@ export function NewLedgerPage() {
               step="0.01"
               value={openingBalance}
               onChange={(e) => setOpeningBalance(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="nl-btype" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-btype" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Balance Nature
             </label>
             <select
               id="nl-btype"
               value={balanceType}
               onChange={(e) => setBalanceType(e.target.value === 'Cr' ? 'Cr' : 'Dr')}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             >
               <option value="Dr">Debit (Dr)</option>
               <option value="Cr">Credit (Cr)</option>
@@ -223,7 +223,7 @@ export function NewLedgerPage() {
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="nl-addr" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nl-addr" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Address
             </label>
             <input
@@ -231,22 +231,22 @@ export function NewLedgerPage() {
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Shop 12, Connaught Circus, New Delhi"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <Link
             href="/admin/masters"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Save className="h-4 w-4" />
             <span>{syncing ? 'Saving...' : 'Save Ledger'}</span>
@@ -320,11 +320,11 @@ export function NewItemPage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="sm:col-span-2">
-            <label htmlFor="ni-name" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-name" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Item Description
             </label>
             <input
@@ -333,12 +333,12 @@ export function NewItemPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. India Gate Basmati Rice 5kg or Fresh Tomatoes (Loose)"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-brand" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-brand" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Brand / Producer
             </label>
             <input
@@ -346,12 +346,12 @@ export function NewItemPage() {
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
               placeholder="India Gate / Amul / FreshFarm"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-sku" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-sku" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               SKU Code
             </label>
             <input
@@ -359,12 +359,12 @@ export function NewItemPage() {
               value={sku}
               onChange={(e) => setSku(e.target.value)}
               placeholder="STP-BASM-5KG"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-barcode" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-barcode" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               EAN Barcode / PLU Code
             </label>
             <input
@@ -372,19 +372,19 @@ export function NewItemPage() {
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
               placeholder="8901526100105 or 200105"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-cat" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-cat" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Supermarket Department
             </label>
             <select
               id="ni-cat"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             >
               {[
                 'Fresh Produce',
@@ -403,26 +403,26 @@ export function NewItemPage() {
           </div>
 
           <div>
-            <label htmlFor="ni-hsn" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-hsn" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               HSN / SAC Code
             </label>
             <input
               id="ni-hsn"
               value={hsnCode}
               onChange={(e) => setHsnCode(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-uqc" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-uqc" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Unit (UQC)
             </label>
             <select
               id="ni-uqc"
               value={uqc}
               onChange={(e) => setUqc(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             >
               {['PKT', 'KG', 'PCS', 'BAG', 'PAC', 'BTL', 'LTR', 'BOX'].map((u) => (
                 <option key={u} value={u}>
@@ -433,14 +433,14 @@ export function NewItemPage() {
           </div>
 
           <div>
-            <label htmlFor="ni-gst" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-gst" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               GST Slab (%)
             </label>
             <select
               id="ni-gst"
               value={taxSlab}
               onChange={(e) => setTaxSlab(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             >
               {['0', '5', '12', '18', '28'].map((t) => (
                 <option key={t} value={t}>
@@ -451,7 +451,7 @@ export function NewItemPage() {
           </div>
 
           <div>
-            <label htmlFor="ni-mrp" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-mrp" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               MRP (INR)
             </label>
             <input
@@ -460,12 +460,12 @@ export function NewItemPage() {
               step="0.01"
               value={mrp}
               onChange={(e) => setMrp(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-srate" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-srate" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Retail Sale Rate
             </label>
             <input
@@ -474,12 +474,12 @@ export function NewItemPage() {
               step="0.01"
               value={saleRate}
               onChange={(e) => setSaleRate(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-prate" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-prate" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Purchase Cost Rate
             </label>
             <input
@@ -488,12 +488,12 @@ export function NewItemPage() {
               step="0.01"
               value={purchaseRate}
               onChange={(e) => setPurchaseRate(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-wrate" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-wrate" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Wholesale Rate
             </label>
             <input
@@ -502,24 +502,24 @@ export function NewItemPage() {
               step="0.01"
               value={wholesaleRate}
               onChange={(e) => setWholesaleRate(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-rack" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-rack" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Rack / Bin Location
             </label>
             <input
               id="ni-rack"
               value={rackLocation}
               onChange={(e) => setRackLocation(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-reorder" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-reorder" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Auto-Reorder Level
             </label>
             <input
@@ -527,24 +527,24 @@ export function NewItemPage() {
               type="number"
               value={reorderLevel}
               onChange={(e) => setReorderLevel(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-batch" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-batch" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Opening Batch No
             </label>
             <input
               id="ni-batch"
               value={batchNo}
               onChange={(e) => setBatchNo(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-exp" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-exp" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Batch Expiry Date
             </label>
             <input
@@ -552,12 +552,12 @@ export function NewItemPage() {
               type="date"
               value={expiryDate}
               onChange={(e) => setExpiryDate(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label htmlFor="ni-qty" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ni-qty" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Opening Stock Qty / KG
             </label>
             <input
@@ -566,12 +566,12 @@ export function NewItemPage() {
               step="0.25"
               value={initialQty}
               onChange={(e) => setInitialQty(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
 
           <div className="sm:col-span-2 lg:col-span-3">
-            <label className="inline-flex items-center gap-2.5 rounded-md border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-medium text-slate-800 cursor-pointer">
+            <label className="inline-flex items-center gap-2.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 px-3.5 py-2.5 text-xs font-medium text-slate-800 dark:text-slate-200 cursor-pointer">
               <input
                 type="checkbox"
                 checked={isWeighed}
@@ -583,7 +583,7 @@ export function NewItemPage() {
                     setTaxSlab('0');
                   }
                 }}
-                className="h-4 w-4 accent-teal-700"
+                className="h-4 w-4 accent-emerald-700"
               />
               <span>
                 Sold by Loose Weight (KG / GM) — enables instant 250g / 500g / 1kg weighing presets
@@ -593,17 +593,17 @@ export function NewItemPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <Link
             href="/admin/masters"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Save className="h-4 w-4" />
             <span>{syncing ? 'Saving...' : 'Save Item Master'}</span>
@@ -673,11 +673,11 @@ export function NewBomPage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2">
-            <label htmlFor="bom-name" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="bom-name" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Finished Assembly / Combo Name
             </label>
             <input
@@ -686,11 +686,11 @@ export function NewBomPage() {
               value={finishedItemName}
               onChange={(e) => setFinishedItemName(e.target.value)}
               placeholder="e.g. Monthly Family Grocery Saver Box"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
           <div>
-            <label htmlFor="bom-code" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="bom-code" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Recipe Code
             </label>
             <input
@@ -698,11 +698,11 @@ export function NewBomPage() {
               required
               value={recipeCode}
               onChange={(e) => setRecipeCode(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
           <div>
-            <label htmlFor="bom-labor" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="bom-labor" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Packing / Labor Overhead (INR)
             </label>
             <input
@@ -710,11 +710,11 @@ export function NewBomPage() {
               type="number"
               value={laborCost}
               onChange={(e) => setLaborCost(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
           <div>
-            <label htmlFor="bom-yield" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="bom-yield" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Yield Quantity
             </label>
             <input
@@ -722,37 +722,37 @@ export function NewBomPage() {
               type="number"
               value={yieldQty}
               onChange={(e) => setYieldQty(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
           <div>
-            <label htmlFor="bom-uqc" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="bom-uqc" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Yield UQC
             </label>
             <input
               id="bom-uqc"
               value={yieldUqc}
               onChange={(e) => setYieldUqc(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm focus:border-emerald-600 dark:border-emerald-500 focus:outline-none"
             />
           </div>
         </div>
 
-        <div className="border-t border-slate-100 pt-4 space-y-3">
-          <div className="text-xs font-semibold text-slate-800">Raw Material Components</div>
+        <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-3">
+          <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Raw Material Components</div>
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
             <input
               value={compName}
               onChange={(e) => setCompName(e.target.value)}
               placeholder="Component item name"
-              className="sm:col-span-6 rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="sm:col-span-6 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
             <input
               type="number"
               value={compQty}
               onChange={(e) => setCompQty(e.target.value)}
               placeholder="Qty"
-              className="sm:col-span-2 rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="sm:col-span-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
             <input
               type="number"
@@ -760,23 +760,23 @@ export function NewBomPage() {
               value={compCost}
               onChange={(e) => setCompCost(e.target.value)}
               placeholder="Unit cost"
-              className="sm:col-span-2 rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="sm:col-span-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
             <button
               type="button"
               onClick={addComponent}
-              className="sm:col-span-2 inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
+              className="sm:col-span-2 inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Add</span>
             </button>
           </div>
 
-          <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-md border border-slate-200 dark:border-slate-800">
             {components.map((c, idx) => (
               <div key={`${c.itemName}-${idx}`} className="flex items-center justify-between px-3 py-2 text-xs">
-                <span className="font-medium text-slate-900">{c.itemName}</span>
-                <span className="font-mono text-slate-600">
+                <span className="font-medium text-slate-900 dark:text-slate-100">{c.itemName}</span>
+                <span className="font-mono text-slate-600 dark:text-slate-400">
                   {c.qty} {c.uqc} x ₹{c.unitCost.toFixed(2)}
                 </span>
               </div>
@@ -784,17 +784,17 @@ export function NewBomPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <Link
             href="/admin/masters"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Save className="h-4 w-4" />
             <span>{syncing ? 'Saving...' : 'Save BOM Formula'}</span>
@@ -928,18 +928,18 @@ export function NewSaleDocumentPage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label htmlFor="ns-type" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ns-type" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Document Type
             </label>
             <select
               id="ns-type"
               value={docType}
               onChange={(e) => setDocType(e.target.value as SaleDocType)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               <option value="GST_INVOICE">Wholesale GST Invoice</option>
               <option value="ESTIMATE">Estimate / Quotation</option>
@@ -950,14 +950,14 @@ export function NewSaleDocumentPage() {
           </div>
 
           <div>
-            <label htmlFor="ns-cust" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ns-cust" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Party / Customer Ledger
             </label>
             <select
               id="ns-cust"
               value={customerId}
               onChange={(e) => setCustomerId(Number(e.target.value))}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -968,14 +968,14 @@ export function NewSaleDocumentPage() {
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="ns-item" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ns-item" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Product / SKU
             </label>
             <select
               id="ns-item"
               value={itemId}
               onChange={(e) => setItemId(Number(e.target.value))}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               {workspace.items.map((it) => (
                 <option key={it.id} value={it.id}>
@@ -986,7 +986,7 @@ export function NewSaleDocumentPage() {
           </div>
 
           <div>
-            <label htmlFor="ns-qty" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ns-qty" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Quantity
             </label>
             <input
@@ -995,19 +995,19 @@ export function NewSaleDocumentPage() {
               min={1}
               value={qty}
               onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
 
           <div>
-            <label htmlFor="ns-mode" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="ns-mode" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Settlement Mode
             </label>
             <select
               id="ns-mode"
               value={paymentMode}
               onChange={(e) => setPaymentMode(e.target.value as 'UPI' | 'Cash' | 'Card' | 'PDC')}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               <option value="UPI">UPI / NEFT</option>
               <option value="Cash">Cash</option>
@@ -1017,20 +1017,20 @@ export function NewSaleDocumentPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs space-y-1.5">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4 text-xs space-y-1.5">
           <div className="flex justify-between">
-            <span className="text-slate-600">Taxable Subtotal</span>
+            <span className="text-slate-600 dark:text-slate-400">Taxable Subtotal</span>
             <span className="font-mono tabular-nums">₹{calc.subtotal.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-600">
+            <span className="text-slate-600 dark:text-slate-400">
               {isInterState ? 'IGST (Inter-State)' : 'CGST + SGST (Intra-State)'}
             </span>
             <span className="font-mono tabular-nums">
               ₹{(calc.cgst + calc.sgst + calc.igst).toFixed(2)}
             </span>
           </div>
-          <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold text-slate-900">
+          <div className="flex justify-between border-t border-slate-200 dark:border-slate-800 pt-2 text-sm font-bold text-slate-900 dark:text-slate-100">
             <span>Net Document Total</span>
             <span className="font-mono tabular-nums">₹{calc.grandTotal.toFixed(2)}</span>
           </div>
@@ -1039,14 +1039,14 @@ export function NewSaleDocumentPage() {
         <div className="flex items-center justify-end gap-3 pt-2">
           <Link
             href="/admin/sales"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Save className="h-4 w-4" />
             <span>{syncing ? 'Posting...' : 'Save & View Printable Bill'}</span>
@@ -1101,11 +1101,11 @@ export function NewSchemePage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2">
-            <label htmlFor="sch-name" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sch-name" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Scheme Title
             </label>
             <input
@@ -1114,11 +1114,11 @@ export function NewSchemePage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Weekend Dairy 5% Off (3+ Packs)"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
           <div>
-            <label htmlFor="sch-target" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sch-target" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Target Barcode or Department
             </label>
             <input
@@ -1127,11 +1127,11 @@ export function NewSchemePage() {
               value={barcodeOrCategory}
               onChange={(e) => setBarcodeOrCategory(e.target.value)}
               placeholder="Staples & Grains / Dairy & Bakery / ALL / Barcode"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
           <div>
-            <label htmlFor="sch-type" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sch-type" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Scheme Type
             </label>
             <select
@@ -1140,14 +1140,14 @@ export function NewSchemePage() {
               onChange={(e) =>
                 setSchemeType(e.target.value === 'BUY_X_GET_Y' ? 'BUY_X_GET_Y' : 'PERCENT_DISCOUNT')
               }
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               <option value="PERCENT_DISCOUNT">Percentage Discount (%)</option>
               <option value="BUY_X_GET_Y">Buy X Get Y Free Qty</option>
             </select>
           </div>
           <div>
-            <label htmlFor="sch-min" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sch-min" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Minimum Qualifying Qty
             </label>
             <input
@@ -1156,12 +1156,12 @@ export function NewSchemePage() {
               min={1}
               value={minQty}
               onChange={(e) => setMinQty(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           {schemeType === 'PERCENT_DISCOUNT' ? (
             <div>
-              <label htmlFor="sch-pct" className="block text-xs font-medium text-slate-700 mb-1">
+              <label htmlFor="sch-pct" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Discount Percentage (%)
               </label>
               <input
@@ -1170,12 +1170,12 @@ export function NewSchemePage() {
                 step="0.5"
                 value={discountPercent}
                 onChange={(e) => setDiscountPercent(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
               />
             </div>
           ) : (
             <div>
-              <label htmlFor="sch-free" className="block text-xs font-medium text-slate-700 mb-1">
+              <label htmlFor="sch-free" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Free Units Given
               </label>
               <input
@@ -1184,12 +1184,12 @@ export function NewSchemePage() {
                 min={1}
                 value={freeQty}
                 onChange={(e) => setFreeQty(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
               />
             </div>
           )}
           <div>
-            <label htmlFor="sch-from" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sch-from" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Valid From
             </label>
             <input
@@ -1197,11 +1197,11 @@ export function NewSchemePage() {
               type="date"
               value={validFrom}
               onChange={(e) => setValidFrom(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           <div>
-            <label htmlFor="sch-to" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sch-to" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Valid To
             </label>
             <input
@@ -1209,22 +1209,22 @@ export function NewSchemePage() {
               type="date"
               value={validTo}
               onChange={(e) => setValidTo(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <Link
             href="/admin/sales"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Save className="h-4 w-4" />
             <span>{syncing ? 'Saving...' : 'Activate Scheme'}</span>
@@ -1284,18 +1284,18 @@ export function NewPurchaseImportPage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label htmlFor="np-type" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="np-type" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Document Type
             </label>
             <select
               id="np-type"
               value={docType}
               onChange={(e) => setDocType(e.target.value as PurchaseDocType)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               <option value="PURCHASE_BILL">Purchase Bill (Adds Stock)</option>
               <option value="PURCHASE_ORDER">Purchase Order</option>
@@ -1303,14 +1303,14 @@ export function NewPurchaseImportPage() {
             </select>
           </div>
           <div>
-            <label htmlFor="np-sup" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="np-sup" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Supplier Ledger
             </label>
             <select
               id="np-sup"
               value={supplierId}
               onChange={(e) => setSupplierId(Number(e.target.value))}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -1320,7 +1320,7 @@ export function NewPurchaseImportPage() {
             </select>
           </div>
           <div>
-            <label htmlFor="np-no" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="np-no" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Supplier Bill / PO No
             </label>
             <input
@@ -1328,13 +1328,13 @@ export function NewPurchaseImportPage() {
               required
               value={billNo}
               onChange={(e) => setBillNo(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
         </div>
 
         <div>
-          <label htmlFor="np-csv" className="block text-xs font-medium text-slate-700 mb-1">
+          <label htmlFor="np-csv" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
             CSV Line Items (ItemName,Barcode,HSN,Batch,Expiry,Qty,Rate,TaxPct)
           </label>
           <textarea
@@ -1342,7 +1342,7 @@ export function NewPurchaseImportPage() {
             rows={5}
             value={csvText}
             onChange={(e) => setCsvText(e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+            className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-xs"
           />
         </div>
 
@@ -1352,11 +1352,11 @@ export function NewPurchaseImportPage() {
           </div>
         )}
 
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 flex flex-wrap items-center justify-between gap-4 text-xs">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4 flex flex-wrap items-center justify-between gap-4 text-xs">
           <span>Parsed Lines: {parsed.lines.length}</span>
           <span className="font-mono">Subtotal: ₹{parsed.subtotal.toFixed(2)}</span>
           <span className="font-mono">GST: ₹{parsed.taxAmount.toFixed(2)}</span>
-          <span className="font-mono font-bold text-slate-900">
+          <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
             Grand Total: ₹{parsed.grandTotal.toFixed(2)}
           </span>
         </div>
@@ -1364,14 +1364,14 @@ export function NewPurchaseImportPage() {
         <div className="flex items-center justify-end gap-3 pt-2">
           <Link
             href="/admin/purchases"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing || parsed.lines.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Upload className="h-4 w-4" />
             <span>{syncing ? 'Importing...' : 'Post Purchase & Update Batches'}</span>
@@ -1428,18 +1428,18 @@ export function NewStockMovementPage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2">
-            <label htmlFor="sm-batch" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sm-batch" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Source Item Batch
             </label>
             <select
               id="sm-batch"
               value={batchId}
               onChange={(e) => setBatchId(Number(e.target.value))}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               {workspace.batches.map((b) => {
                 const it = workspace.items.find((i) => i.id === b.itemId);
@@ -1453,7 +1453,7 @@ export function NewStockMovementPage() {
             </select>
           </div>
           <div>
-            <label htmlFor="sm-type" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sm-type" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Movement Type
             </label>
             <select
@@ -1462,7 +1462,7 @@ export function NewStockMovementPage() {
               onChange={(e) =>
                 setMovementType(e.target.value as 'TRANSFER' | 'ADJUSTMENT' | 'DUMP')
               }
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               <option value="TRANSFER">Inter-Godown / Branch Transfer</option>
               <option value="ADJUSTMENT">Physical Stock Adjustment (+/-)</option>
@@ -1470,7 +1470,7 @@ export function NewStockMovementPage() {
             </select>
           </div>
           <div>
-            <label htmlFor="sm-qty" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sm-qty" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Quantity
             </label>
             <input
@@ -1479,24 +1479,24 @@ export function NewStockMovementPage() {
               required
               value={qtyDelta}
               onChange={(e) => setQtyDelta(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           {movementType === 'TRANSFER' && (
             <div className="sm:col-span-2">
-              <label htmlFor="sm-dest" className="block text-xs font-medium text-slate-700 mb-1">
+              <label htmlFor="sm-dest" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Destination Godown / Branch
               </label>
               <input
                 id="sm-dest"
                 value={toGodown}
                 onChange={(e) => setToGodown(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
               />
             </div>
           )}
           <div className="sm:col-span-2">
-            <label htmlFor="sm-reason" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="sm-reason" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Audit Reason / Remarks
             </label>
             <input
@@ -1504,22 +1504,22 @@ export function NewStockMovementPage() {
               required
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <Link
             href="/admin/inventory"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Save className="h-4 w-4" />
             <span>{syncing ? 'Posting...' : 'Record Movement'}</span>
@@ -1587,18 +1587,18 @@ export function NewVoucherPage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label htmlFor="nv-type" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-type" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Voucher Type
             </label>
             <select
               id="nv-type"
               value={voucherType}
               onChange={(e) => setVoucherType(e.target.value as VoucherType)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               {(['Receipt', 'Payment', 'Contra', 'Journal', 'Debit Note', 'Credit Note'] as VoucherType[]).map(
                 (t) => (
@@ -1610,7 +1610,7 @@ export function NewVoucherPage() {
             </select>
           </div>
           <div>
-            <label htmlFor="nv-amt" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-amt" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Amount (INR)
             </label>
             <input
@@ -1620,18 +1620,18 @@ export function NewVoucherPage() {
               required
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           <div>
-            <label htmlFor="nv-dr" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-dr" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Debit (Dr) Account
             </label>
             <select
               id="nv-dr"
               value={debitLedgerName}
               onChange={(e) => setDebitLedgerName(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               {workspace.ledgers.map((l) => (
                 <option key={l.id} value={l.name}>
@@ -1641,14 +1641,14 @@ export function NewVoucherPage() {
             </select>
           </div>
           <div>
-            <label htmlFor="nv-cr" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-cr" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Credit (Cr) Account
             </label>
             <select
               id="nv-cr"
               value={creditLedgerName}
               onChange={(e) => setCreditLedgerName(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               {workspace.ledgers.map((l) => (
                 <option key={l.id} value={l.name}>
@@ -1658,18 +1658,18 @@ export function NewVoucherPage() {
             </select>
           </div>
           <div>
-            <label htmlFor="nv-mode" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-mode" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Payment / Instrument Mode
             </label>
             <input
               id="nv-mode"
               value={paymentMode}
               onChange={(e) => setPaymentMode(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
           <div>
-            <label htmlFor="nv-ref" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-ref" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Bill / Invoice Reference
             </label>
             <input
@@ -1677,22 +1677,22 @@ export function NewVoucherPage() {
               value={referenceInvoiceNo}
               onChange={(e) => setReferenceInvoiceNo(e.target.value)}
               placeholder="e.g. INV-26-0412"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           <div>
-            <label htmlFor="nv-chq" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-chq" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Cheque / PDC No (Optional)
             </label>
             <input
               id="nv-chq"
               value={chequeNo}
               onChange={(e) => setChequeNo(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           <div>
-            <label htmlFor="nv-pdc" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-pdc" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               PDC Maturity Date (Optional)
             </label>
             <input
@@ -1700,11 +1700,11 @@ export function NewVoucherPage() {
               type="date"
               value={pdcDate}
               onChange={(e) => setPdcDate(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           <div className="sm:col-span-2">
-            <label htmlFor="nv-narr" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="nv-narr" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Narration
             </label>
             <input
@@ -1713,22 +1713,22 @@ export function NewVoucherPage() {
               value={narration}
               onChange={(e) => setNarration(e.target.value)}
               placeholder="Being payment received against bill settlement"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <Link
             href="/admin/accounting"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Save className="h-4 w-4" />
             <span>{syncing ? 'Posting...' : 'Post Voucher'}</span>
@@ -1780,11 +1780,11 @@ export function NewCrmRecordPage() {
       />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="rounded-lg border border-slate-200 bg-white p-6 space-y-5"
+        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-6 space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label htmlFor="crm-ch" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="crm-ch" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Channel
             </label>
             <select
@@ -1793,14 +1793,14 @@ export function NewCrmRecordPage() {
               onChange={(e) =>
                 setChannel(e.target.value === 'CRM_LEAD' ? 'CRM_LEAD' : 'MARG_MART_ORDER')
               }
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
             >
               <option value="MARG_MART_ORDER">Marg Mart Online Order</option>
               <option value="CRM_LEAD">CRM Sales Lead / Follow-Up</option>
             </select>
           </div>
           <div>
-            <label htmlFor="crm-val" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="crm-val" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Estimated Order Value (INR)
             </label>
             <input
@@ -1809,11 +1809,11 @@ export function NewCrmRecordPage() {
               required
               value={orderValue}
               onChange={(e) => setOrderValue(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           <div>
-            <label htmlFor="crm-name" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="crm-name" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Customer / Restaurant Name
             </label>
             <input
@@ -1822,11 +1822,11 @@ export function NewCrmRecordPage() {
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
               placeholder="e.g. SpiceRoute Kitchens"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
           <div>
-            <label htmlFor="crm-phone" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="crm-phone" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Phone / WhatsApp
             </label>
             <input
@@ -1835,11 +1835,11 @@ export function NewCrmRecordPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+91 98451 33019"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
           <div>
-            <label htmlFor="crm-date" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="crm-date" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Next Follow-Up / Delivery Date
             </label>
             <input
@@ -1847,11 +1847,11 @@ export function NewCrmRecordPage() {
               type="date"
               value={nextFollowUp}
               onChange={(e) => setNextFollowUp(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
             />
           </div>
           <div>
-            <label htmlFor="crm-items" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="crm-items" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Items Summary
             </label>
             <input
@@ -1859,11 +1859,11 @@ export function NewCrmRecordPage() {
               value={itemsSummary}
               onChange={(e) => setItemsSummary(e.target.value)}
               placeholder="e.g. 5x Basmati Rice 5kg, 10x Fortune Oil 1L"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
           <div className="sm:col-span-2">
-            <label htmlFor="crm-notes" className="block text-xs font-medium text-slate-700 mb-1">
+            <label htmlFor="crm-notes" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
               Follow-Up Notes
             </label>
             <textarea
@@ -1871,22 +1871,22 @@ export function NewCrmRecordPage() {
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-slate-100 text-sm"
             />
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <Link
             href="/admin/crm"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
           >
             <Save className="h-4 w-4" />
             <span>{syncing ? 'Saving...' : 'Save Record'}</span>

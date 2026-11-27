@@ -57,6 +57,11 @@ interface MargBooksContextValue {
   toast: ToastNotice | null;
   showToast: (title: string, tone?: ToastNotice['tone']) => void;
   clearToast: () => void;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+  posFocusMode: boolean;
+  setPosFocusMode: (value: boolean) => void;
+  togglePosFocusMode: () => void;
 }
 
 const MargBooksContext = createContext<MargBooksContextValue | null>(null);
@@ -72,8 +77,44 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState<ToastNotice | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [posFocusMode, setPosFocusMode] = useState(false);
   const tokenRef = useRef<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hydrate Light / Dark Checkout Mode preference safely on mount
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = window.localStorage.getItem('freshmart-theme');
+        const initial: 'light' | 'dark' = saved === 'dark' ? 'dark' : 'light';
+        document.documentElement.classList.toggle('dark', initial === 'dark');
+        if (initial === 'dark') {
+          setTheme('dark');
+        }
+      } catch {
+        // Ignore storage access errors
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: 'light' | 'dark' = prev === 'dark' ? 'light' : 'dark';
+      try {
+        window.localStorage.setItem('freshmart-theme', next);
+      } catch {
+        // Ignore storage errors
+      }
+      document.documentElement.classList.toggle('dark', next === 'dark');
+      return next;
+    });
+  }, []);
+
+  const togglePosFocusMode = useCallback(() => {
+    setPosFocusMode((prev) => !prev);
+  }, []);
 
   const activeModule = useMemo(
     () => resolveModuleFromPathname(pathname || '/admin/dashboard'),
@@ -176,6 +217,9 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
       } else if (e.altKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         router.push('/admin/shifts');
+      } else if (e.altKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        router.push('/admin/barcodes');
       } else if (e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         router.push('/admin/search');
@@ -405,6 +449,11 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
       toast,
       showToast,
       clearToast,
+      theme,
+      toggleTheme,
+      posFocusMode,
+      setPosFocusMode,
+      togglePosFocusMode,
     }),
     [
       workspace,
@@ -423,6 +472,10 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
       toast,
       showToast,
       clearToast,
+      theme,
+      toggleTheme,
+      posFocusMode,
+      togglePosFocusMode,
     ]
   );
 
