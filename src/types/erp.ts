@@ -13,8 +13,32 @@ export type ModuleId =
   | 'control-room'
   | 'shifts'
   | 'barcodes'
+  | 'addons'
   | 'company-setup'
   | 'search';
+
+export type AddonKey =
+  | 'offline_pwa'
+  | 'weighing_scale'
+  | 'home_delivery'
+  | 'petty_cash_analytics'
+  | 'membership_wallet'
+  | 'damage_claims'
+  | 'wastage_tracking';
+
+export type EnabledAddonsMap = Record<AddonKey, boolean>;
+
+export const DEFAULT_ENABLED_ADDONS: EnabledAddonsMap = {
+  offline_pwa: true,
+  weighing_scale: true,
+  home_delivery: true,
+  petty_cash_analytics: true,
+  membership_wallet: true,
+  damage_claims: true,
+  wastage_tracking: true,
+};
+
+export type MembershipTier = 'NONE' | 'SILVER' | 'GOLD' | 'FAMILY_PLUS';
 
 export type UserAccessRole = 'admin' | 'manager' | 'cashier' | 'accountant';
 
@@ -56,6 +80,9 @@ export interface Ledger {
   balanceType: 'Dr' | 'Cr';
   creditLimit: number;
   loyaltyPoints: number;
+  membershipTier?: MembershipTier;
+  membershipCardNo?: string;
+  walletBalance?: number;
 }
 
 export interface InventoryItem {
@@ -214,6 +241,9 @@ export interface InvoiceRecord {
   loyaltyRedeemed: number;
   couponCode?: string;
   couponDiscount?: number;
+  operatorName?: string;
+  checkoutSeconds?: number;
+  itemCount?: number;
   paymentModeSummary: string;
   payments: PaymentSplit[];
   items: InvoiceLineItem[];
@@ -281,7 +311,7 @@ export interface VoucherRecord {
 export interface StockMovement {
   id: number;
   companyId: number;
-  movementType: 'TRANSFER' | 'ADJUSTMENT' | 'DUMP';
+  movementType: 'TRANSFER' | 'ADJUSTMENT' | 'DUMP' | 'WASTAGE_OUT';
   itemName: string;
   batchNo: string;
   fromGodown: string;
@@ -318,6 +348,7 @@ export interface PosCounter {
   walletSales: number;
   pdcSales: number;
   creditSales?: number;
+  pettyCashPayouts?: number;
   status: 'OPEN' | 'CLOSED';
   lastClosedAt: string;
 }
@@ -339,6 +370,7 @@ export interface ControlRoomConfig {
   thermalPaperWidth: '58mm' | '80mm' | 'A4';
   upiVpa: string;
   weightedBarcodePrefix: string;
+  enabledAddons: EnabledAddonsMap;
   lastBooksRebuildAt: string;
   lastBackupAt: string;
 }
@@ -377,6 +409,116 @@ export interface ShiftHandoverRecord {
   handedOverAt: string;
 }
 
+export type DeliveryStage =
+  | 'RECEIVED'
+  | 'PACKING'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'CANCELLED';
+
+export type DeliveryPaymentType = 'COD_CASH' | 'COD_UPI' | 'PREPAID';
+
+export interface DeliveryOrderRecord {
+  id: number;
+  companyId: number;
+  orderNo: string;
+  invoiceId: number | null;
+  invoiceNo: string;
+  customerName: string;
+  customerPhone: string;
+  deliveryAddress: string;
+  deliverySlot: string;
+  riderName: string;
+  stage: DeliveryStage;
+  paymentType: DeliveryPaymentType;
+  codCollected: boolean;
+  grandTotal: number;
+  itemsSummary: string;
+  notes: string;
+  orderDate: string;
+}
+
+export interface PettyCashExpenseRecord {
+  id: number;
+  companyId: number;
+  expenseDate: string;
+  counterCode: string;
+  category: string;
+  paidTo: string;
+  amount: number;
+  narration: string;
+  voucherNo: string;
+  operatorName: string;
+}
+
+export type DamageClaimStatus =
+  | 'LOGGED'
+  | 'CLAIM_RAISED'
+  | 'CREDIT_NOTE_RECEIVED'
+  | 'SETTLED';
+
+export type DamageClaimReason =
+  | 'Transit Damage'
+  | 'Expired Stock'
+  | 'Short Supply'
+  | 'Leaking Pack';
+
+export interface SupplierDamageClaimRecord {
+  id: number;
+  companyId: number;
+  claimNo: string;
+  claimDate: string;
+  ledgerId: number | null;
+  supplierName: string;
+  itemId: number | null;
+  itemName: string;
+  sku: string;
+  batchNo: string;
+  expiryDate: string;
+  qty: number;
+  unitCost: number;
+  claimAmount: number;
+  reason: DamageClaimReason;
+  status: DamageClaimStatus;
+  debitNoteNo: string;
+  notes: string;
+}
+
+export type WastageReason =
+  | 'PRODUCE_SPOILAGE'
+  | 'BAKERY_UNSOLD'
+  | 'DAIRY_EXPIRY'
+  | 'HANDLING_BREAKAGE'
+  | 'SHRINKAGE_PILFERAGE';
+
+export type WastageDisposalMethod =
+  | 'COMPOST_DISCARD'
+  | 'MARKDOWN_CLEARANCE'
+  | 'STAFF_WELFARE'
+  | 'SUPPLIER_CLAIM';
+
+export interface WastageLogRecord {
+  id: number;
+  companyId: number;
+  wastageNo: string;
+  wastageDate: string;
+  itemId: number | null;
+  itemName: string;
+  sku: string;
+  category: string;
+  batchId: number | null;
+  batchNo: string;
+  godownName: string;
+  uqc: string;
+  qty: number;
+  unitCost: number;
+  totalLoss: number;
+  reason: WastageReason;
+  disposalMethod: WastageDisposalMethod;
+  operatorName: string;
+  notes: string;
+}
+
 export interface WorkspaceData {
   companies: Company[];
   activeCompanyId: number;
@@ -394,6 +536,10 @@ export interface WorkspaceData {
   crmRecords: CrmRecord[];
   posCounters: PosCounter[];
   shiftHandovers: ShiftHandoverRecord[];
+  deliveryOrders: DeliveryOrderRecord[];
+  pettyCashExpenses: PettyCashExpenseRecord[];
+  supplierDamageClaims: SupplierDamageClaimRecord[];
+  wastageLogs: WastageLogRecord[];
   controlRoom: ControlRoomConfig;
   operators: OperatorRole[];
 }

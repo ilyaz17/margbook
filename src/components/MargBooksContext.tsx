@@ -11,7 +11,12 @@ import React, {
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
-import { auth, googleAuthProvider } from '../lib/firebase';
+import { auth, googleAuthProvider, testConnection } from '../lib/firebase';
+import {
+  publishOpsEventToFirestore,
+  subscribeOpsEventsFromFirestore,
+  type RealtimeOpsEvent,
+} from '../lib/firestore-realtime';
 import { createInitialWorkspaceData } from '../lib/seed-data';
 import {
   calculateShiftVariance,
@@ -25,6 +30,13 @@ export interface ToastNotice {
   id: number;
   title: string;
   tone: 'success' | 'info' | 'warning' | 'error';
+}
+
+export interface QueuedOfflineBill {
+  id: string;
+  companyId: number;
+  queuedAt: string;
+  payload: Record<string, unknown>;
 }
 
 interface ActionResult {
@@ -62,6 +74,17 @@ interface MargBooksContextValue {
   posFocusMode: boolean;
   setPosFocusMode: (value: boolean) => void;
   togglePosFocusMode: () => void;
+  isOnline: boolean;
+  offlineQueue: QueuedOfflineBill[];
+  queueOfflineInvoice: (payload: Record<string, unknown>) => void;
+  flushOfflineQueue: () => Promise<void>;
+  liveOpsEvents: RealtimeOpsEvent[];
+  broadcastOpsEvent: (event: {
+    eventType: RealtimeOpsEvent['eventType'];
+    title: string;
+    detail: string;
+    severity?: RealtimeOpsEvent['severity'];
+  }) => void;
 }
 
 const MargBooksContext = createContext<MargBooksContextValue | null>(null);
@@ -79,11 +102,16 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<ToastNotice | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [posFocusMode, setPosFocusMode] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineQueue, setOfflineQueue] = useState<QueuedOfflineBill[]>([]);
+  const [liveOpsEvents, setLiveOpsEvents] = useState<RealtimeOpsEvent[]>([]);
   const tokenRef = useRef<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushingRef = useRef(false);
 
-  // Hydrate Light / Dark Checkout Mode preference safely on mount
+  // Hydrate Light / Dark Checkout Mode, online status, offline POS queue, and Firestore connection check
   useEffect(() => {
+    void testConnection();
     const timer = window.setTimeout(() => {
       try {
         const saved = window.localStorage.getItem('freshmart-theme');
@@ -92,11 +120,26 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
         if (initial === 'dark') {
           setTheme('dark');
         }
+        setIsOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
+        const rawQueue = window.localStorage.getItem('freshmart-offline-pos-queue');
+        if (rawQueue) {
+          const parsed = JSON.parse(rawQueue) as QueuedOfflineBill[];
+          if (Array.isArray(parsed)) setOfflineQueue(parsed);
+        }
       } catch {
         // Ignore storage access errors
       }
     }, 0);
-    return () => window.clearTimeout(timer);
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -220,6 +263,9 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
       } else if (e.altKey && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         router.push('/admin/barcodes');
+      } else if (e.altKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        router.push('/admin/addons');
       } else if (e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         router.push('/admin/search');
@@ -228,6 +274,17 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [user, pathname, router]);
+
+  // Subscribe to real-time Firestore store operational events for active company
+  useEffect(() => {
+    if (!user || !workspaceLoaded) return;
+    const unsub = subscribeOpsEventsFromFirestore(workspace.activeCompanyId, (events) => {
+      setLiveOpsEvents(events);
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [user, workspaceLoaded, workspace.activeCompanyId]);
 
   const signInWithGoogle = useCallback(async (): Promise<boolean> => {
     try {
@@ -413,6 +470,106 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
     [dispatchActionWithResult]
   );
 
+  const persistQueue = useCallback((items: QueuedOfflineBill[]) => {
+    setOfflineQueue(items);
+    try {
+      window.localStorage.setItem('freshmart-offline-pos-queue', JSON.stringify(items));
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  const queueOfflineInvoice = useCallback(
+    (payload: Record<string, unknown>) => {
+      const entry: QueuedOfflineBill = {
+        id: `off_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        companyId: workspace.activeCompanyId,
+        queuedAt: new Date().toISOString(),
+        payload,
+      };
+      persistQueue([entry, ...offlineQueue]);
+      showToast('Bill saved to offline queue. Will auto-sync when internet returns.', 'warning');
+    },
+    [offlineQueue, persistQueue, showToast, workspace.activeCompanyId]
+  );
+
+  const flushOfflineQueue = useCallback(async () => {
+    if (!user || !isOnline || offlineQueue.length === 0 || flushingRef.current) return;
+    flushingRef.current = true;
+    setSyncing(true);
+    try {
+      const idToken = await user.getIdToken();
+      const remaining: QueuedOfflineBill[] = [];
+      let syncedCount = 0;
+      let latestWorkspace: WorkspaceData | null = null;
+
+      for (const item of [...offlineQueue].reverse()) {
+        try {
+          const res = await fetch('/api/workspace/action', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              companyId: item.companyId,
+              type: 'CREATE_INVOICE',
+              payload: item.payload,
+            }),
+          });
+          if (res.ok) {
+            syncedCount += 1;
+            latestWorkspace = (await res.json()) as WorkspaceData;
+          } else {
+            remaining.push(item);
+          }
+        } catch {
+          remaining.push(item);
+        }
+      }
+
+      persistQueue(remaining.reverse());
+      if (latestWorkspace) setWorkspace(latestWorkspace);
+      if (syncedCount > 0) {
+        showToast(
+          `Synced ${syncedCount} offline POS bill${syncedCount === 1 ? '' : 's'} to cloud.`,
+          'success'
+        );
+      }
+    } finally {
+      flushingRef.current = false;
+      setSyncing(false);
+    }
+  }, [user, isOnline, offlineQueue, persistQueue, showToast]);
+
+  // Auto-flush queued offline bills when connectivity returns
+  useEffect(() => {
+    if (isOnline && user && workspaceLoaded && offlineQueue.length > 0) {
+      void flushOfflineQueue();
+    }
+  }, [isOnline, user, workspaceLoaded, offlineQueue.length, flushOfflineQueue]);
+
+  const broadcastOpsEvent = useCallback(
+    (event: {
+      eventType: RealtimeOpsEvent['eventType'];
+      title: string;
+      detail: string;
+      severity?: RealtimeOpsEvent['severity'];
+    }) => {
+      if (!user) return;
+      const activeComp =
+        workspace.companies.find((c) => c.id === workspace.activeCompanyId) ||
+        workspace.companies[0];
+      void publishOpsEventToFirestore(
+        workspace.activeCompanyId,
+        activeComp?.name || 'FreshMart Superstore',
+        workspace.controlRoom.enabledAddons,
+        event
+      );
+    },
+    [user, workspace.activeCompanyId, workspace.companies, workspace.controlRoom.enabledAddons]
+  );
+
   const financials = useMemo(
     () =>
       computeFinancialStatements({
@@ -454,6 +611,12 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
       posFocusMode,
       setPosFocusMode,
       togglePosFocusMode,
+      isOnline,
+      offlineQueue,
+      queueOfflineInvoice,
+      flushOfflineQueue,
+      liveOpsEvents,
+      broadcastOpsEvent,
     }),
     [
       workspace,
@@ -476,6 +639,12 @@ export function MargBooksProvider({ children }: { children: React.ReactNode }) {
       toggleTheme,
       posFocusMode,
       togglePosFocusMode,
+      isOnline,
+      offlineQueue,
+      queueOfflineInvoice,
+      flushOfflineQueue,
+      liveOpsEvents,
+      broadcastOpsEvent,
     ]
   );
 

@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Award,
   CheckCircle2,
+  CreditCard,
   FileText,
   Mail,
   MapPin,
@@ -15,6 +16,7 @@ import {
   Send,
   Wallet,
 } from 'lucide-react';
+import type { MembershipTier } from '../types/erp';
 import { useMargBooks } from './MargBooksContext';
 
 function formatInr(n: number) {
@@ -33,6 +35,19 @@ export function LedgerDetailPage({ ledgerId }: { ledgerId: string }) {
   const [settleMode, setSettleMode] = useState<'Cash' | 'UPI' | 'Card'>('Cash');
   const [settleNote, setSettleNote] = useState('');
   const [settling, setSettling] = useState(false);
+
+  // Membership Card & Family Prepaid Wallet State
+  const walletAddonEnabled = workspace.controlRoom.enabledAddons?.membership_wallet !== false;
+  const [memberTier, setMemberTier] = useState<MembershipTier>(
+    ledger?.membershipTier || 'NONE'
+  );
+  const [memberCardNo, setMemberCardNo] = useState<string>(
+    ledger?.membershipCardNo || ''
+  );
+  const [topupAmount, setTopupAmount] = useState<string>('1000');
+  const [topupMode, setTopupMode] = useState<'Cash' | 'UPI' | 'Card'>('UPI');
+  const [topupNote, setTopupNote] = useState<string>('');
+  const [walletBusy, setWalletBusy] = useState(false);
 
   if (!ledger) {
     return (
@@ -118,6 +133,51 @@ export function LedgerDetailPage({ ledgerId }: { ledgerId: string }) {
       }
     } finally {
       setSettling(false);
+    }
+  };
+
+  const handleUpdateMembership = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setWalletBusy(true);
+    try {
+      await dispatchAction(
+        'UPDATE_MEMBERSHIP',
+        {
+          ledgerId: ledger.id,
+          membershipTier: memberTier,
+          membershipCardNo: memberCardNo.trim().toUpperCase(),
+        },
+        `Updated membership profile for ${ledger.name}.`
+      );
+    } finally {
+      setWalletBusy(false);
+    }
+  };
+
+  const handleTopupWallet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = Number(topupAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      showToast('Enter a valid wallet top-up amount greater than ₹0.', 'error');
+      return;
+    }
+    setWalletBusy(true);
+    try {
+      const ok = await dispatchAction(
+        'TOPUP_FAMILY_WALLET',
+        {
+          ledgerId: ledger.id,
+          amount: amt,
+          paymentMode: topupMode,
+          narration: topupNote.trim() || `Family prepaid wallet top-up via ${topupMode}`,
+        },
+        `Credited ${formatInr(amt)} to ${ledger.name}'s Family Prepaid Wallet.`
+      );
+      if (ok) {
+        setTopupNote('');
+      }
+    } finally {
+      setWalletBusy(false);
     }
   };
 
@@ -340,6 +400,164 @@ export function LedgerDetailPage({ ledgerId }: { ledgerId: string }) {
               </button>
             </div>
           </form>
+        </section>
+      )}
+
+      {/* Membership Card & Family Prepaid Wallet Panel */}
+      {ledger.groupType === 'Customer' && walletAddonEnabled && (
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Membership Card &amp; Family Prepaid Wallet
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Scan member card ID directly in Retail POS to auto-select shopper and deduct prepaid balance.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Prepaid Wallet Balance
+                </div>
+                <div className="font-mono text-lg font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                  {formatInr(ledger.walletBalance || 0)}
+                </div>
+              </div>
+              <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                {(ledger.membershipTier || 'NONE').replace('_', ' ')}
+                {ledger.membershipCardNo ? ` · ${ledger.membershipCardNo}` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Tier & Card Assignment */}
+            <form
+              onSubmit={(e) => void handleUpdateMembership(e)}
+              className="lg:col-span-5 space-y-3"
+            >
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                Membership Tier &amp; Scannable Card ID
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Member Tier
+                  </label>
+                  <select
+                    value={memberTier}
+                    onChange={(e) => setMemberTier(e.target.value as MembershipTier)}
+                    className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="NONE">None</option>
+                    <option value="SILVER">Silver</option>
+                    <option value="GOLD">Gold</option>
+                    <option value="FAMILY_PLUS">Family Plus</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Card Barcode ID
+                  </label>
+                  <input
+                    type="text"
+                    value={memberCardNo}
+                    onChange={(e) => setMemberCardNo(e.target.value.toUpperCase())}
+                    placeholder="FM-MEM-1042"
+                    className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={walletBusy}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-emerald-600 disabled:opacity-60 cursor-pointer"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" />
+                <span>Save Membership Card</span>
+              </button>
+            </form>
+
+            {/* Wallet Top-Up Form */}
+            <form
+              onSubmit={(e) => void handleTopupWallet(e)}
+              className="lg:col-span-7 space-y-3 lg:border-l lg:border-slate-100 lg:dark:border-slate-800 lg:pl-5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  Top Up Family Prepaid Wallet
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {[500, 1000, 2000, 5000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setTopupAmount(String(preset))}
+                      className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:border-emerald-600 cursor-pointer"
+                    >
+                      +₹{preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <div className="sm:col-span-3">
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Top-Up (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="50"
+                    step="1"
+                    required
+                    value={topupAmount}
+                    onChange={(e) => setTopupAmount(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="sm:col-span-3">
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Mode
+                  </label>
+                  <select
+                    value={topupMode}
+                    onChange={(e) => setTopupMode(e.target.value as 'Cash' | 'UPI' | 'Card')}
+                    className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="UPI">UPI</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-3">
+                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={topupNote}
+                    onChange={(e) => setTopupNote(e.target.value)}
+                    placeholder="UPI ref / note"
+                    className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="sm:col-span-3 flex items-end">
+                  <button
+                    type="submit"
+                    disabled={walletBusy}
+                    className="w-full inline-flex items-center justify-center gap-1 rounded-md bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Top Up</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
         </section>
       )}
 

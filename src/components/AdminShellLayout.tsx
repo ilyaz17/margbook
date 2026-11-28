@@ -17,6 +17,7 @@ import {
 import { motion } from 'motion/react';
 import { resolveBreadcrumbFromPathname } from '../lib/routes';
 import { useMargBooks } from './MargBooksContext';
+import { OfflineIndicator, PWAInstallButton } from './PwaWidgets';
 import { SidebarNav } from './SidebarNav';
 
 export function AdminShellLayout({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ export function AdminShellLayout({ children }: { children: React.ReactNode }) {
     activeModule,
     user,
     authLoading,
+    syncing,
     signOutUser,
     toast,
     clearToast,
@@ -35,6 +37,9 @@ export function AdminShellLayout({ children }: { children: React.ReactNode }) {
     toggleTheme,
     posFocusMode,
     togglePosFocusMode,
+    isOnline,
+    offlineQueue,
+    flushOfflineQueue,
   } = useMargBooks();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -157,6 +162,10 @@ export function AdminShellLayout({ children }: { children: React.ReactNode }) {
               </button>
             )}
 
+            {workspace.controlRoom.enabledAddons?.offline_pwa !== false && (
+              <PWAInstallButton />
+            )}
+
             <button
               type="button"
               onClick={toggleTheme}
@@ -206,6 +215,15 @@ export function AdminShellLayout({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </header>
+
+        {workspace.controlRoom.enabledAddons?.offline_pwa !== false && (
+          <OfflineIndicator
+            isOnline={isOnline}
+            queuedCount={offlineQueue.length}
+            isSyncing={syncing}
+            onSyncNow={() => void flushOfflineQueue()}
+          />
+        )}
 
         {/* Main Viewport */}
         <main

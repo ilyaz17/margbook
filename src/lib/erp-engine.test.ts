@@ -3,16 +3,22 @@ import assert from 'node:assert/strict';
 import {
   buildGlobalSearchResults,
   buildGstr1PortalJson,
+  buildWhatsAppCatalogBroadcastText,
+  buildWhatsAppDeliveryUpdateText,
   calculateInvoiceTotals,
   calculateShiftVariance,
   classifyExpiryStatus,
+  computeCashierSpeedLeaderboard,
   computeFinancialStatements,
+  computeWastageSummary,
   evaluateLineScheme,
   evaluatePromoCoupon,
   generateDeterministicIrn,
   parseBarcodeOrPluInput,
   parsePurchaseImportCsv,
+  parseSerialScaleReading,
   sanitizeNextPath,
+  validateFamilyWalletPayment,
   validateMultiPayments,
   validateUdhaarLimit,
 } from './erp-engine';
@@ -550,4 +556,230 @@ test('encodeCode128B, buildUpiPaymentUri, and buildWhatsAppBillText generate val
   assert.ok(msg.includes('You Saved ₹20.00'));
   assert.ok(msg.includes('freshmart@upi'));
 });
+
+test('parseSerialScaleReading decodes stable kg, unstable kg, and gram frames safely', () => {
+  assert.deepEqual(parseSerialScaleReading('ST,GS,+001.250kg'), {
+    weightKg: 1.25,
+    stable: true,
+  });
+  assert.deepEqual(parseSerialScaleReading('US,NT, 0.450 kg'), {
+    weightKg: 0.45,
+    stable: false,
+  });
+  assert.deepEqual(parseSerialScaleReading('W: 750 g'), {
+    weightKg: 0.75,
+    stable: true,
+  });
+  assert.equal(parseSerialScaleReading('NO_WEIGHT'), null);
+});
+
+test('calculateShiftVariance deducts petty cash payouts from expected drawer cash', () => {
+  const res = calculateShiftVariance({
+    openingCash: 5000,
+    cashSales: 12000,
+    upiSales: 9000,
+    cardSales: 3000,
+    walletSales: 500,
+    pdcSales: 0,
+    pettyCashPayouts: 850,
+    countedCash: 16150,
+  });
+  assert.equal(res.expectedCash, 16150);
+  assert.equal(res.cashVariance, 0);
+  assert.equal(res.varianceStatus, 'MATCHED');
+});
+
+test('computeCashierSpeedLeaderboard ranks cashiers by avg seconds per bill and items/min', () => {
+  const board = computeCashierSpeedLeaderboard([
+    {
+      id: 1,
+      companyId: 1,
+      invoiceNo: 'POS-1',
+      docType: 'POS_BILL',
+      counterCode: 'LANE-01',
+      ledgerId: 1,
+      customerName: 'Walk-in',
+      customerPhone: '',
+      customerGstin: '',
+      invoiceDate: '2026-11-26',
+      subtotal: 400,
+      discountAmount: 0,
+      cgstAmount: 10,
+      sgstAmount: 10,
+      igstAmount: 0,
+      roundOff: 0,
+      grandTotal: 420,
+      loyaltyEarned: 8,
+      loyaltyRedeemed: 0,
+      paymentModeSummary: 'Cash',
+      payments: [{ mode: 'Cash', amount: 420 }],
+      items: [],
+      irn: '',
+      ewayBillNo: '',
+      status: 'Paid',
+      operatorName: 'Kavitha Rajan',
+      checkoutSeconds: 20,
+      itemCount: 8,
+    },
+    {
+      id: 2,
+      companyId: 1,
+      invoiceNo: 'POS-2',
+      docType: 'POS_BILL',
+      counterCode: 'LANE-02',
+      ledgerId: 1,
+      customerName: 'Walk-in',
+      customerPhone: '',
+      customerGstin: '',
+      invoiceDate: '2026-11-26',
+      subtotal: 600,
+      discountAmount: 0,
+      cgstAmount: 15,
+      sgstAmount: 15,
+      igstAmount: 0,
+      roundOff: 0,
+      grandTotal: 630,
+      loyaltyEarned: 12,
+      loyaltyRedeemed: 0,
+      paymentModeSummary: 'UPI',
+      payments: [{ mode: 'UPI', amount: 630 }],
+      items: [],
+      irn: '',
+      ewayBillNo: '',
+      status: 'Paid',
+      operatorName: 'Suresh Menon',
+      checkoutSeconds: 40,
+      itemCount: 6,
+    },
+  ]);
+  assert.equal(board.length, 2);
+  assert.equal(board[0].operatorName, 'Kavitha Rajan');
+  assert.equal(board[0].avgSecondsPerBill, 20);
+  assert.equal(board[0].itemsPerMin, 24);
+});
+
+test('validateFamilyWalletPayment enforces member prepaid wallet balance', () => {
+  const ok = validateFamilyWalletPayment({
+    customer: { name: 'Priya Nair', walletBalance: 2500, membershipTier: 'GOLD' },
+    walletAmount: 1200,
+  });
+  assert.equal(ok.allowed, true);
+  assert.equal(ok.availableBalance, 2500);
+
+  const over = validateFamilyWalletPayment({
+    customer: { name: 'Priya Nair', walletBalance: 500, membershipTier: 'GOLD' },
+    walletAmount: 850,
+  });
+  assert.equal(over.allowed, false);
+});
+
+test('computeWastageSummary computes total loss, today loss, shrinkage %, and top reason', () => {
+  const summary = computeWastageSummary({
+    wastageLogs: [
+      {
+        id: 1,
+        companyId: 1,
+        wastageNo: 'WST-01',
+        wastageDate: '2026-11-26',
+        itemId: 101,
+        itemName: 'Fresh Farm Tomatoes',
+        sku: 'VEG-TOM-KG',
+        category: 'Fresh Produce',
+        batchId: 1,
+        batchNo: 'FM-26',
+        godownName: 'Main Store Floor',
+        uqc: 'KG',
+        qty: 5,
+        unitCost: 26,
+        totalLoss: 130,
+        reason: 'PRODUCE_SPOILAGE',
+        disposalMethod: 'COMPOST_DISCARD',
+        operatorName: 'Suresh Menon',
+        notes: 'Bruised crates',
+      },
+      {
+        id: 2,
+        companyId: 1,
+        wastageNo: 'WST-02',
+        wastageDate: '2026-11-25',
+        itemId: 103,
+        itemName: 'Amul Taaza Milk 1L',
+        sku: 'DRY-MLK',
+        category: 'Dairy & Bakery',
+        batchId: 2,
+        batchNo: 'AM-26',
+        godownName: 'Cold Chiller',
+        uqc: 'PKT',
+        qty: 3,
+        unitCost: 50,
+        totalLoss: 150,
+        reason: 'DAIRY_EXPIRY',
+        disposalMethod: 'COMPOST_DISCARD',
+        operatorName: 'Suresh Menon',
+        notes: 'Past sell-by',
+      },
+    ],
+    invoices: [
+      {
+        id: 1,
+        companyId: 1,
+        invoiceNo: 'POS-1',
+        docType: 'POS_BILL',
+        counterCode: 'LANE-01',
+        ledgerId: 1,
+        customerName: 'Walk-in',
+        customerPhone: '',
+        customerGstin: '',
+        invoiceDate: '2026-11-26',
+        subtotal: 10000,
+        discountAmount: 0,
+        cgstAmount: 0,
+        sgstAmount: 0,
+        igstAmount: 0,
+        roundOff: 0,
+        grandTotal: 10000,
+        loyaltyEarned: 0,
+        loyaltyRedeemed: 0,
+        paymentModeSummary: 'Cash',
+        payments: [],
+        items: [],
+        irn: '',
+        ewayBillNo: '',
+        status: 'Paid',
+      },
+    ],
+    asOfDate: '2026-11-26',
+  });
+  assert.equal(summary.totalLossAllTime, 280);
+  assert.equal(summary.todayLoss, 130);
+  assert.equal(summary.totalQtyWrittenOff, 8);
+  assert.equal(summary.wastagePercentOfSales, 2.8);
+  assert.equal(summary.topReason, 'DAIRY_EXPIRY');
+});
+
+test('WhatsApp delivery update and catalog broadcast builders format clean messages', () => {
+  const deliveryMsg = buildWhatsAppDeliveryUpdateText({
+    storeName: 'FreshMart Superstore',
+    orderNo: 'DLV-26-014',
+    customerName: 'Priya Nair',
+    stage: 'OUT_FOR_DELIVERY',
+    riderName: 'Arjun K',
+    deliverySlot: 'Express (60 min)',
+    grandTotal: 785,
+    paymentType: 'COD_UPI',
+    upiVpa: 'freshmart@upi',
+  });
+  assert.ok(deliveryMsg.includes('Out for Delivery'));
+  assert.ok(deliveryMsg.includes('freshmart@upi'));
+
+  const catalogMsg = buildWhatsAppCatalogBroadcastText({
+    storeName: 'FreshMart Superstore',
+    branchName: 'Indiranagar',
+    phone: '+91 80 4128 9200',
+    items: [sampleGroceryItem, sampleWeighedProduceItem],
+  });
+  assert.ok(catalogMsg.includes('Britannia Good Day'));
+  assert.ok(catalogMsg.includes('Save ₹10'));
+});
+
 

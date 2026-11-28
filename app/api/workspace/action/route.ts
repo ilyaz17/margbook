@@ -13,20 +13,35 @@ import {
   companies,
   controlRoomSettings,
   crmRecords,
+  deliveryOrders,
   invoices,
   itemBatches,
   items,
   ledgers,
+  pettyCashExpenses,
   posCounters,
   promoCoupons,
   purchases,
   schemes,
   shiftHandovers,
   stockMovements,
+  supplierDamageClaims,
   users,
   vouchers,
+  wastageLogs,
 } from '../../../../src/db/schema.ts';
 import { calculateShiftVariance, round2, round3 } from '../../../../src/lib/erp-engine.ts';
+import { DEFAULT_ENABLED_ADDONS, type AddonKey, type EnabledAddonsMap } from '../../../../src/types/erp.ts';
+
+const VALID_ADDON_KEYS: AddonKey[] = [
+  'offline_pwa',
+  'weighing_scale',
+  'home_delivery',
+  'petty_cash_analytics',
+  'membership_wallet',
+  'damage_claims',
+  'wastage_tracking',
+];
 
 const actionSchema = z.object({
   companyId: z.number().int().positive(),
@@ -54,6 +69,17 @@ const actionSchema = z.object({
     'RECORD_SHIFT_HANDOVER',
     'UPDATE_USER_ROLE',
     'RESET_TO_SUPERMARKET',
+    'TOGGLE_ADDON',
+    'CREATE_DELIVERY_ORDER',
+    'UPDATE_DELIVERY_STAGE',
+    'SETTLE_DELIVERY_COD',
+    'CREATE_PETTY_CASH',
+    'TOPUP_FAMILY_WALLET',
+    'UPDATE_MEMBERSHIP',
+    'CREATE_DAMAGE_CLAIM',
+    'UPDATE_CLAIM_STATUS',
+    'CONVERT_CLAIM_TO_DEBIT_NOTE',
+    'LOG_WASTAGE',
   ]),
   payload: z.record(z.string(), z.any()),
 });
@@ -262,43 +288,69 @@ export async function POST(req: NextRequest) {
         const loyaltyEarned = Number(payload.loyaltyEarned || 0);
         const loyaltyRedeemed = Number(payload.loyaltyRedeemed || 0);
 
-        await db.insert(invoices).values({
-          companyId,
-          invoiceNo: String(payload.invoiceNo),
-          docType: String(payload.docType || 'POS_BILL'),
-          counterCode,
-          ledgerId,
-          customerName: String(payload.customerName || 'Walk-in Retail Customer'),
-          customerPhone: String(payload.customerPhone || ''),
-          customerGstin: String(payload.customerGstin || ''),
-          invoiceDate: String(payload.invoiceDate || '2026-11-26'),
-          subtotal: Number(payload.subtotal || 0),
-          discountAmount: Number(payload.discountAmount || 0),
-          cgstAmount: Number(payload.cgstAmount || 0),
-          sgstAmount: Number(payload.sgstAmount || 0),
-          igstAmount: Number(payload.igstAmount || 0),
-          roundOff: Number(payload.roundOff || 0),
-          grandTotal: Number(payload.grandTotal || 0),
-          loyaltyEarned,
-          loyaltyRedeemed,
-          couponCode: String(payload.couponCode || ''),
-          couponDiscount: Number(payload.couponDiscount || 0),
-          paymentModeSummary: String(payload.paymentModeSummary || 'Cash'),
-          paymentsJson: JSON.stringify(payments),
-          itemsJson: JSON.stringify(lineItems),
-          irn: String(payload.irn || ''),
-          ewayBillNo: String(payload.ewayBillNo || ''),
-          status: String(payload.status || 'Paid'),
-          createdByUid: session.user.uid,
-        });
+        const operatorName = String(
+          payload.operatorName || session.user.displayName || 'Kavitha Rajan'
+        ).trim();
+        const checkoutSeconds = Math.max(1, Math.round(Number(payload.checkoutSeconds || 20)));
+        const itemCount = Math.max(
+          1,
+          Math.round(Number(payload.itemCount || lineItems.length || 1))
+        );
 
-        // Update customer loyalty points and Credit (Udhaar) receivable balance if applicable
+        const [insertedInvoice] = await db
+          .insert(invoices)
+          .values({
+            companyId,
+            invoiceNo: String(payload.invoiceNo),
+            docType: String(payload.docType || 'POS_BILL'),
+            counterCode,
+            ledgerId,
+            customerName: String(payload.customerName || 'Walk-in Retail Customer'),
+            customerPhone: String(payload.customerPhone || ''),
+            customerGstin: String(payload.customerGstin || ''),
+            invoiceDate: String(payload.invoiceDate || '2026-11-26'),
+            subtotal: Number(payload.subtotal || 0),
+            discountAmount: Number(payload.discountAmount || 0),
+            cgstAmount: Number(payload.cgstAmount || 0),
+            sgstAmount: Number(payload.sgstAmount || 0),
+            igstAmount: Number(payload.igstAmount || 0),
+            roundOff: Number(payload.roundOff || 0),
+            grandTotal: Number(payload.grandTotal || 0),
+            loyaltyEarned,
+            loyaltyRedeemed,
+            couponCode: String(payload.couponCode || ''),
+            couponDiscount: Number(payload.couponDiscount || 0),
+            paymentModeSummary: String(payload.paymentModeSummary || 'Cash'),
+            paymentsJson: JSON.stringify(payments),
+            itemsJson: JSON.stringify(lineItems),
+            irn: String(payload.irn || ''),
+            ewayBillNo: String(payload.ewayBillNo || ''),
+            status: String(payload.status || 'Paid'),
+            operatorName,
+            checkoutSeconds,
+            itemCount,
+            createdByUid: session.user.uid,
+          })
+          .returning({ id: invoices.id });
+
+        // Update customer loyalty points, Credit (Udhaar), and Family Prepaid Wallet balance
         const creditSplitAmount = round2(
           payments
             .filter((p: { mode?: string }) => p.mode === 'Credit')
             .reduce((sum: number, p: { amount?: number }) => sum + Number(p.amount || 0), 0)
         );
-        if (ledgerId && (loyaltyEarned > 0 || loyaltyRedeemed > 0 || creditSplitAmount > 0)) {
+        const walletSplitAmount = round2(
+          payments
+            .filter((p: { mode?: string }) => p.mode === 'Wallet')
+            .reduce((sum: number, p: { amount?: number }) => sum + Number(p.amount || 0), 0)
+        );
+        if (
+          ledgerId &&
+          (loyaltyEarned > 0 ||
+            loyaltyRedeemed > 0 ||
+            creditSplitAmount > 0 ||
+            walletSplitAmount > 0)
+        ) {
           const [cust] = await db
             .select()
             .from(ledgers)
@@ -314,9 +366,46 @@ export async function POST(req: NextRequest) {
                       balanceType: 'Dr',
                     }
                   : {}),
+                ...(walletSplitAmount > 0
+                  ? {
+                      walletBalance: round2(
+                        Math.max(0, (cust.walletBalance || 0) - walletSplitAmount)
+                      ),
+                    }
+                  : {}),
               })
               .where(eq(ledgers.id, cust.id));
           }
+        }
+
+        // Optional linked Home Delivery dispatch order from POS checkout
+        if (payload.assignDelivery && typeof payload.assignDelivery === 'object') {
+          const dlv = payload.assignDelivery as Record<string, unknown>;
+          const itemsSummary = lineItems
+            .slice(0, 4)
+            .map((ln: { name?: string; qty?: number; uqc?: string }) => `${ln.name || 'Item'} ×${ln.qty || 1}`)
+            .join(', ');
+          await db.insert(deliveryOrders).values({
+            companyId,
+            orderNo: `DLV-26-${Date.now().toString().slice(-4)}`,
+            invoiceId: insertedInvoice?.id ?? null,
+            invoiceNo: String(payload.invoiceNo || ''),
+            customerName: String(payload.customerName || 'Walk-in Shopper'),
+            customerPhone: String(dlv.customerPhone || payload.customerPhone || ''),
+            deliveryAddress: String(dlv.deliveryAddress || 'Local Store Delivery'),
+            deliverySlot: String(dlv.deliverySlot || 'Express (60 min)'),
+            riderName: String(dlv.riderName || 'Unassigned'),
+            stage: 'PACKING',
+            paymentType:
+              dlv.paymentType === 'COD_UPI' || dlv.paymentType === 'PREPAID'
+                ? String(dlv.paymentType)
+                : 'COD_CASH',
+            codCollected: dlv.paymentType === 'PREPAID',
+            grandTotal: Number(payload.grandTotal || 0),
+            itemsSummary: itemsSummary || 'Supermarket Order',
+            notes: String(dlv.notes || 'Created directly from Retail POS checkout'),
+            orderDate: String(payload.invoiceDate || '2026-11-26'),
+          });
         }
 
         // Decrement stock batches for bills (increment for credit notes)
@@ -696,6 +785,7 @@ export async function POST(req: NextRequest) {
           cardSales: counter.cardSales,
           walletSales: counter.walletSales,
           pdcSales: counter.pdcSales,
+          pettyCashPayouts: counter.pettyCashPayouts || 0,
           countedCash,
         });
 
@@ -741,7 +831,14 @@ export async function POST(req: NextRequest) {
               ? { openingCash: Number(payload.nextOpeningCash) }
               : {}),
             ...(payload.resetSales === true
-              ? { cashSales: 0, upiSales: 0, cardSales: 0, walletSales: 0, pdcSales: 0 }
+              ? {
+                  cashSales: 0,
+                  upiSales: 0,
+                  cardSales: 0,
+                  walletSales: 0,
+                  pdcSales: 0,
+                  pettyCashPayouts: 0,
+                }
               : {}),
           })
           .where(eq(posCounters.id, counter.id));
@@ -763,6 +860,526 @@ export async function POST(req: NextRequest) {
 
       case 'RESET_TO_SUPERMARKET': {
         await resetCompanyToSupermarket(companyId, session.user.uid);
+        break;
+      }
+
+      case 'TOGGLE_ADDON': {
+        const addonKey = String(payload.addonKey || '') as AddonKey;
+        if (!VALID_ADDON_KEYS.includes(addonKey)) {
+          return NextResponse.json({ error: 'Unknown add-on module key.' }, { status: 400 });
+        }
+        const [existingCr] = await db
+          .select()
+          .from(controlRoomSettings)
+          .where(eq(controlRoomSettings.companyId, companyId));
+        let currentMap: EnabledAddonsMap = { ...DEFAULT_ENABLED_ADDONS };
+        if (existingCr?.enabledAddons) {
+          try {
+            currentMap = {
+              ...DEFAULT_ENABLED_ADDONS,
+              ...(JSON.parse(existingCr.enabledAddons) as Partial<EnabledAddonsMap>),
+            };
+          } catch {
+            currentMap = { ...DEFAULT_ENABLED_ADDONS };
+          }
+        }
+        currentMap[addonKey] = Boolean(payload.enabled);
+        await db
+          .update(controlRoomSettings)
+          .set({ enabledAddons: JSON.stringify(currentMap) })
+          .where(eq(controlRoomSettings.companyId, companyId));
+        break;
+      }
+
+      case 'CREATE_DELIVERY_ORDER': {
+        const customerName = String(payload.customerName || '').trim();
+        if (!customerName) {
+          return NextResponse.json({ error: 'Customer name is required.' }, { status: 400 });
+        }
+        await db.insert(deliveryOrders).values({
+          companyId,
+          orderNo: String(payload.orderNo || `DLV-26-${Date.now().toString().slice(-4)}`),
+          invoiceId: payload.invoiceId ? Number(payload.invoiceId) : null,
+          invoiceNo: String(payload.invoiceNo || ''),
+          customerName,
+          customerPhone: String(payload.customerPhone || ''),
+          deliveryAddress: String(payload.deliveryAddress || ''),
+          deliverySlot: String(payload.deliverySlot || 'Express (60 min)'),
+          riderName: String(payload.riderName || 'Unassigned'),
+          stage: String(payload.stage || 'RECEIVED'),
+          paymentType:
+            payload.paymentType === 'COD_UPI' || payload.paymentType === 'PREPAID'
+              ? String(payload.paymentType)
+              : 'COD_CASH',
+          codCollected: payload.paymentType === 'PREPAID' || Boolean(payload.codCollected),
+          grandTotal: round2(Math.max(0, Number(payload.grandTotal || 0))),
+          itemsSummary: String(payload.itemsSummary || ''),
+          notes: String(payload.notes || ''),
+          orderDate: String(payload.orderDate || new Date().toISOString().slice(0, 10)),
+        });
+        break;
+      }
+
+      case 'UPDATE_DELIVERY_STAGE': {
+        const id = Number(payload.id || 0);
+        const validStages = ['RECEIVED', 'PACKING', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+        const nextStage = validStages.includes(String(payload.stage))
+          ? String(payload.stage)
+          : 'PACKING';
+        await db
+          .update(deliveryOrders)
+          .set({
+            stage: nextStage,
+            ...(payload.riderName !== undefined ? { riderName: String(payload.riderName) } : {}),
+            ...(payload.notes !== undefined ? { notes: String(payload.notes) } : {}),
+          })
+          .where(and(eq(deliveryOrders.id, id), eq(deliveryOrders.companyId, companyId)));
+        break;
+      }
+
+      case 'SETTLE_DELIVERY_COD': {
+        const id = Number(payload.id || 0);
+        const [order] = await db
+          .select()
+          .from(deliveryOrders)
+          .where(and(eq(deliveryOrders.id, id), eq(deliveryOrders.companyId, companyId)));
+        if (!order) {
+          return NextResponse.json({ error: 'Delivery order not found.' }, { status: 404 });
+        }
+        if (!order.codCollected) {
+          await db
+            .update(deliveryOrders)
+            .set({ codCollected: true, stage: 'DELIVERED' })
+            .where(eq(deliveryOrders.id, order.id));
+          await db.insert(vouchers).values({
+            companyId,
+            voucherNo: `COD-${Date.now().toString().slice(-5)}`,
+            voucherType: 'Receipt',
+            voucherDate: new Date().toISOString().slice(0, 10),
+            debitLedgerName:
+              order.paymentType === 'COD_UPI'
+                ? 'HDFC Current Account (0412)'
+                : 'Cash-in-Hand (Store Vault & Lanes)',
+            creditLedgerName: order.customerName,
+            amount: order.grandTotal,
+            narration: `Home delivery COD settlement for ${order.orderNo} (${order.riderName})`,
+            referenceInvoiceNo: order.invoiceNo || order.orderNo,
+            paymentMode: order.paymentType === 'COD_UPI' ? 'UPI' : 'Cash',
+            chequeNo: '',
+            pdcDate: '',
+            reconciled: order.paymentType === 'COD_UPI',
+          });
+        }
+        break;
+      }
+
+      case 'CREATE_PETTY_CASH': {
+        const amount = round2(Math.max(0, Number(payload.amount || 0)));
+        const paidTo = String(payload.paidTo || '').trim();
+        if (!paidTo || amount <= 0) {
+          return NextResponse.json(
+            { error: 'Payee and valid payout amount are required.' },
+            { status: 400 }
+          );
+        }
+        const counterCode = String(payload.counterCode || 'LANE-01');
+        const expenseDate = String(payload.expenseDate || new Date().toISOString().slice(0, 10));
+        const voucherNo = `PTY-26-${Date.now().toString().slice(-4)}`;
+        const category = String(payload.category || 'Store Supplies');
+
+        await db.insert(pettyCashExpenses).values({
+          companyId,
+          expenseDate,
+          counterCode,
+          category,
+          paidTo,
+          amount,
+          narration: String(payload.narration || `${category} paid from ${counterCode}`),
+          voucherNo,
+          operatorName: String(
+            payload.operatorName || session.user.displayName || 'Store Cashier'
+          ),
+        });
+
+        const [counter] = await db
+          .select()
+          .from(posCounters)
+          .where(
+            and(
+              eq(posCounters.companyId, companyId),
+              eq(posCounters.counterCode, counterCode)
+            )
+          );
+        if (counter) {
+          await db
+            .update(posCounters)
+            .set({
+              pettyCashPayouts: round2((counter.pettyCashPayouts || 0) + amount),
+            })
+            .where(eq(posCounters.id, counter.id));
+        }
+
+        await db.insert(vouchers).values({
+          companyId,
+          voucherNo,
+          voucherType: 'Payment',
+          voucherDate: expenseDate,
+          debitLedgerName: `Petty Cash Expense — ${category}`,
+          creditLedgerName: 'Cash-in-Hand (Store Vault & Lanes)',
+          amount,
+          narration: `Counter ${counterCode} petty cash paid to ${paidTo}: ${String(payload.narration || category)}`,
+          referenceInvoiceNo: voucherNo,
+          paymentMode: 'Cash',
+          chequeNo: '',
+          pdcDate: '',
+          reconciled: true,
+        });
+        break;
+      }
+
+      case 'TOPUP_FAMILY_WALLET': {
+        const ledgerId = Number(payload.ledgerId || 0);
+        const amount = round2(Math.max(0, Number(payload.amount || 0)));
+        if (!ledgerId || amount <= 0) {
+          return NextResponse.json(
+            { error: 'Select a customer ledger and valid top-up amount.' },
+            { status: 400 }
+          );
+        }
+        const [cust] = await db
+          .select()
+          .from(ledgers)
+          .where(and(eq(ledgers.id, ledgerId), eq(ledgers.companyId, companyId)));
+        if (!cust) {
+          return NextResponse.json({ error: 'Customer ledger not found.' }, { status: 404 });
+        }
+        const mode = String(payload.paymentMode || 'UPI');
+        await db
+          .update(ledgers)
+          .set({
+            walletBalance: round2((cust.walletBalance || 0) + amount),
+          })
+          .where(eq(ledgers.id, cust.id));
+
+        await db.insert(vouchers).values({
+          companyId,
+          voucherNo: `WLT-${Date.now().toString().slice(-5)}`,
+          voucherType: 'Receipt',
+          voucherDate: new Date().toISOString().slice(0, 10),
+          debitLedgerName:
+            mode === 'Cash'
+              ? 'Cash-in-Hand (Store Vault & Lanes)'
+              : 'HDFC Current Account (0412)',
+          creditLedgerName: `${cust.name} (Prepaid Wallet)`,
+          amount,
+          narration: String(
+            payload.narration || `Family prepaid wallet top-up via ${mode}`
+          ),
+          referenceInvoiceNo: cust.membershipCardNo || '',
+          paymentMode: mode,
+          chequeNo: '',
+          pdcDate: '',
+          reconciled: mode !== 'Cash',
+        });
+        break;
+      }
+
+      case 'UPDATE_MEMBERSHIP': {
+        const ledgerId = Number(payload.ledgerId || 0);
+        const validTiers = ['NONE', 'SILVER', 'GOLD', 'FAMILY_PLUS'];
+        const membershipTier = validTiers.includes(String(payload.membershipTier))
+          ? String(payload.membershipTier)
+          : 'NONE';
+        const membershipCardNo = String(payload.membershipCardNo || '').trim().toUpperCase();
+        await db
+          .update(ledgers)
+          .set({ membershipTier, membershipCardNo })
+          .where(and(eq(ledgers.id, ledgerId), eq(ledgers.companyId, companyId)));
+        break;
+      }
+
+      case 'CREATE_DAMAGE_CLAIM': {
+        const supplierName = String(payload.supplierName || '').trim();
+        const itemName = String(payload.itemName || '').trim();
+        const qty = round3(Math.max(0.01, Number(payload.qty || 1)));
+        const unitCost = round2(Math.max(0, Number(payload.unitCost || 0)));
+        if (!supplierName || !itemName) {
+          return NextResponse.json(
+            { error: 'Supplier and item are required for a damage claim.' },
+            { status: 400 }
+          );
+        }
+        await db.insert(supplierDamageClaims).values({
+          companyId,
+          claimNo: String(payload.claimNo || `CLM-26-${Date.now().toString().slice(-4)}`),
+          claimDate: String(payload.claimDate || new Date().toISOString().slice(0, 10)),
+          ledgerId: payload.ledgerId ? Number(payload.ledgerId) : null,
+          supplierName,
+          itemId: payload.itemId ? Number(payload.itemId) : null,
+          itemName,
+          sku: String(payload.sku || ''),
+          batchNo: String(payload.batchNo || 'B-DMG'),
+          expiryDate: String(payload.expiryDate || ''),
+          qty,
+          unitCost,
+          claimAmount: round2(qty * unitCost),
+          reason: String(payload.reason || 'Transit Damage'),
+          status: 'LOGGED',
+          debitNoteNo: '',
+          notes: String(payload.notes || ''),
+        });
+        break;
+      }
+
+      case 'UPDATE_CLAIM_STATUS': {
+        const id = Number(payload.id || 0);
+        const validStatuses = ['LOGGED', 'CLAIM_RAISED', 'CREDIT_NOTE_RECEIVED', 'SETTLED'];
+        const nextStatus = validStatuses.includes(String(payload.status))
+          ? String(payload.status)
+          : 'CLAIM_RAISED';
+        await db
+          .update(supplierDamageClaims)
+          .set({ status: nextStatus })
+          .where(
+            and(
+              eq(supplierDamageClaims.id, id),
+              eq(supplierDamageClaims.companyId, companyId)
+            )
+          );
+        break;
+      }
+
+      case 'CONVERT_CLAIM_TO_DEBIT_NOTE': {
+        const id = Number(payload.id || 0);
+        const [claim] = await db
+          .select()
+          .from(supplierDamageClaims)
+          .where(
+            and(
+              eq(supplierDamageClaims.id, id),
+              eq(supplierDamageClaims.companyId, companyId)
+            )
+          );
+        if (!claim) {
+          return NextResponse.json({ error: 'Supplier claim not found.' }, { status: 404 });
+        }
+        const debitNoteNo = `DN-26-${Date.now().toString().slice(-4)}`;
+        const today = new Date().toISOString().slice(0, 10);
+
+        await db.insert(purchases).values({
+          companyId,
+          billNo: debitNoteNo,
+          docType: 'DEBIT_NOTE',
+          ledgerId: claim.ledgerId,
+          supplierName: claim.supplierName,
+          supplierGstin: '',
+          billDate: today,
+          subtotal: claim.claimAmount,
+          taxAmount: 0,
+          grandTotal: claim.claimAmount,
+          itemsJson: JSON.stringify([
+            {
+              itemName: claim.itemName,
+              barcode: claim.sku || 'CLAIM',
+              hsnCode: '0000',
+              batchNo: claim.batchNo,
+              expiryDate: claim.expiryDate || today,
+              qty: claim.qty,
+              rate: claim.unitCost,
+              taxSlab: 0,
+              lineTotal: claim.claimAmount,
+            },
+          ]),
+          importSource: 'Manual',
+          status: 'Posted',
+        });
+
+        // Deduct damaged/returned qty from matching batch
+        if (claim.itemId) {
+          const batches = await db
+            .select()
+            .from(itemBatches)
+            .where(
+              and(
+                eq(itemBatches.companyId, companyId),
+                eq(itemBatches.itemId, claim.itemId)
+              )
+            );
+          const matchBatch =
+            batches.find((b) => b.batchNo === claim.batchNo) || batches[0];
+          if (matchBatch) {
+            await db
+              .update(itemBatches)
+              .set({
+                qtyOnHand: Math.max(0, round3(matchBatch.qtyOnHand - claim.qty)),
+              })
+              .where(eq(itemBatches.id, matchBatch.id));
+          }
+        }
+
+        await db.insert(stockMovements).values({
+          companyId,
+          movementType: 'DAMAGE_OUT',
+          itemName: claim.itemName,
+          batchNo: claim.batchNo,
+          fromGodown: 'Main Supermarket Floor',
+          toGodown: `Supplier Return (${claim.supplierName})`,
+          qtyDelta: -claim.qty,
+          reason: `${claim.claimNo} converted to ${debitNoteNo} (${claim.reason})`,
+          movementDate: today,
+        });
+
+        await db
+          .update(supplierDamageClaims)
+          .set({ status: 'CREDIT_NOTE_RECEIVED', debitNoteNo })
+          .where(eq(supplierDamageClaims.id, claim.id));
+        break;
+      }
+
+      case 'LOG_WASTAGE': {
+        const itemId = payload.itemId ? Number(payload.itemId) : null;
+        const batchId = payload.batchId ? Number(payload.batchId) : null;
+        const qty = round3(Math.max(0, Number(payload.qty || 0)));
+        if (qty <= 0) {
+          return NextResponse.json(
+            { error: 'Wastage quantity must be greater than zero.' },
+            { status: 400 }
+          );
+        }
+
+        let itemName = String(payload.itemName || '').trim();
+        let sku = String(payload.sku || '');
+        let category = String(payload.category || 'Fresh Produce');
+        let uqc = String(payload.uqc || 'KG');
+        let unitCost = round2(Math.max(0, Number(payload.unitCost || 0)));
+        let batchNo = String(payload.batchNo || '');
+        let godownName = String(payload.godownName || 'Main Supermarket Floor');
+
+        if (itemId) {
+          const [it] = await db
+            .select()
+            .from(items)
+            .where(and(eq(items.id, itemId), eq(items.companyId, companyId)));
+          if (it) {
+            itemName = itemName || it.name;
+            sku = sku || it.sku;
+            category = it.category;
+            uqc = it.uqc;
+            if (unitCost <= 0) unitCost = it.purchaseRate;
+          }
+        }
+
+        // Deduct from specific batchId or best matching batch
+        let targetBatch: typeof itemBatches.$inferSelect | undefined;
+        if (batchId) {
+          const [b] = await db
+            .select()
+            .from(itemBatches)
+            .where(and(eq(itemBatches.id, batchId), eq(itemBatches.companyId, companyId)));
+          targetBatch = b;
+        } else if (itemId) {
+          const candidateBatches = await db
+            .select()
+            .from(itemBatches)
+            .where(
+              and(
+                eq(itemBatches.companyId, companyId),
+                eq(itemBatches.itemId, itemId)
+              )
+            );
+          targetBatch =
+            candidateBatches.find((b) => b.batchNo === batchNo && b.qtyOnHand > 0) ||
+            candidateBatches.find((b) => b.qtyOnHand > 0) ||
+            candidateBatches[0];
+        }
+
+        if (targetBatch) {
+          batchNo = targetBatch.batchNo;
+          godownName = targetBatch.godownName;
+          if (unitCost <= 0) unitCost = targetBatch.costRate;
+          await db
+            .update(itemBatches)
+            .set({
+              qtyOnHand: Math.max(0, round3(targetBatch.qtyOnHand - qty)),
+            })
+            .where(eq(itemBatches.id, targetBatch.id));
+        }
+
+        const totalLoss = round2(qty * unitCost);
+        const wastageNo = `WST-26-${Date.now().toString().slice(-4)}`;
+        const wastageDate = String(payload.wastageDate || new Date().toISOString().slice(0, 10));
+        const validReasons = [
+          'PRODUCE_SPOILAGE',
+          'BAKERY_UNSOLD',
+          'DAIRY_EXPIRY',
+          'HANDLING_BREAKAGE',
+          'SHRINKAGE_PILFERAGE',
+        ];
+        const reason = validReasons.includes(String(payload.reason))
+          ? String(payload.reason)
+          : 'PRODUCE_SPOILAGE';
+        const validDisposals = [
+          'COMPOST_DISCARD',
+          'MARKDOWN_CLEARANCE',
+          'STAFF_WELFARE',
+          'SUPPLIER_CLAIM',
+        ];
+        const disposalMethod = validDisposals.includes(String(payload.disposalMethod))
+          ? String(payload.disposalMethod)
+          : 'COMPOST_DISCARD';
+
+        await db.insert(wastageLogs).values({
+          companyId,
+          wastageNo,
+          wastageDate,
+          itemId,
+          itemName: itemName || 'Perishable Item',
+          sku,
+          category,
+          batchId: targetBatch?.id ?? batchId,
+          batchNo: batchNo || 'FLOOR',
+          godownName,
+          uqc,
+          qty,
+          unitCost,
+          totalLoss,
+          reason,
+          disposalMethod,
+          operatorName: String(
+            payload.operatorName || session.user.displayName || 'Store Manager'
+          ),
+          notes: String(payload.notes || ''),
+        });
+
+        await db.insert(stockMovements).values({
+          companyId,
+          movementType: 'WASTAGE_OUT',
+          itemName: itemName || 'Perishable Item',
+          batchNo: batchNo || 'FLOOR',
+          fromGodown: godownName,
+          toGodown: disposalMethod.replace('_', ' '),
+          qtyDelta: -qty,
+          reason: `${wastageNo} · ${reason.replace('_', ' ')}${payload.notes ? ` — ${String(payload.notes)}` : ''}`,
+          movementDate: wastageDate,
+        });
+
+        if (totalLoss > 0) {
+          await db.insert(vouchers).values({
+            companyId,
+            voucherNo: wastageNo,
+            voucherType: 'Journal',
+            voucherDate: wastageDate,
+            debitLedgerName: 'Stock Wastage & Shrinkage Loss A/c',
+            creditLedgerName: 'Inventory Stock-in-Hand',
+            amount: totalLoss,
+            narration: `Wastage write-off ${wastageNo}: ${qty} ${uqc} of ${itemName} (${reason.replace('_', ' ')})`,
+            referenceInvoiceNo: wastageNo,
+            paymentMode: 'Journal',
+            chequeNo: '',
+            pdcDate: '',
+            reconciled: true,
+          });
+        }
         break;
       }
     }

@@ -2,13 +2,30 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, Download, FileCheck2, Plus, QrCode, RefreshCw } from 'lucide-react';
+import {
+  Bike,
+  CheckCircle2,
+  Copy,
+  Download,
+  FileCheck2,
+  MessageSquare,
+  Plus,
+  QrCode,
+  RefreshCw,
+} from 'lucide-react';
 import {
   buildGstr1PortalJson,
+  buildWhatsAppCatalogBroadcastText,
+  buildWhatsAppDeliveryUpdateText,
   generateDeterministicIrn,
   generateEwayBillNo,
 } from '../lib/erp-engine';
-import type { CrmRecord } from '../types/erp';
+import type {
+  CrmRecord,
+  DeliveryOrderRecord,
+  DeliveryPaymentType,
+  DeliveryStage,
+} from '../types/erp';
 import { useMargBooks } from './MargBooksContext';
 
 function formatInr(n: number) {
@@ -477,14 +494,42 @@ export function GstComplianceModule() {
   );
 }
 
+const DELIVERY_RIDERS = ['Arjun Kumar', 'Ravi Shankar', 'Manoj V', 'Unassigned'];
+
 export function CrmMargMartModule() {
-  const { workspace, dispatchAction, showToast } = useMargBooks();
+  const { workspace, dispatchAction, showToast, broadcastOpsEvent, syncing } = useMargBooks();
+  const deliveryEnabled = workspace.controlRoom.enabledAddons?.home_delivery !== false;
+  const activeCompany =
+    workspace.companies.find((c) => c.id === workspace.activeCompanyId) ||
+    workspace.companies[0];
+
+  const [viewMode, setViewMode] = useState<'delivery' | 'crm'>(
+    deliveryEnabled ? 'delivery' : 'crm'
+  );
+  const [deliveryStageFilter, setDeliveryStageFilter] = useState<'ALL' | DeliveryStage>('ALL');
+  const [showNewDeliveryForm, setShowNewDeliveryForm] = useState(false);
+
+  // Inline New Home Delivery / WhatsApp Order Form State
+  const [dlvCustomer, setDlvCustomer] = useState('');
+  const [dlvPhone, setDlvPhone] = useState('');
+  const [dlvAddress, setDlvAddress] = useState('');
+  const [dlvSlot, setDlvSlot] = useState('Express (60 min)');
+  const [dlvRider, setDlvRider] = useState('Arjun Kumar');
+  const [dlvPaymentType, setDlvPaymentType] = useState<DeliveryPaymentType>('COD_UPI');
+  const [dlvTotal, setDlvTotal] = useState('');
+  const [dlvItemsSummary, setDlvItemsSummary] = useState('');
+
   const [channelTab, setChannelTab] = useState<'ALL' | 'MARG_MART_ORDER' | 'CRM_LEAD'>('ALL');
 
-  const filtered = useMemo(() => {
+  const filteredCrm = useMemo(() => {
     if (channelTab === 'ALL') return workspace.crmRecords;
     return workspace.crmRecords.filter((r) => r.channel === channelTab);
   }, [workspace.crmRecords, channelTab]);
+
+  const filteredDeliveries = useMemo(() => {
+    if (deliveryStageFilter === 'ALL') return workspace.deliveryOrders;
+    return workspace.deliveryOrders.filter((d) => d.stage === deliveryStageFilter);
+  }, [workspace.deliveryOrders, deliveryStageFilter]);
 
   const nextStageMap: Record<CrmRecord['stage'], CrmRecord['stage']> = {
     New: 'Follow-Up',
@@ -495,124 +540,569 @@ export function CrmMargMartModule() {
     Won: 'Won',
   };
 
+  const nextDeliveryStageMap: Record<DeliveryStage, DeliveryStage> = {
+    RECEIVED: 'PACKING',
+    PACKING: 'OUT_FOR_DELIVERY',
+    OUT_FOR_DELIVERY: 'DELIVERED',
+    DELIVERED: 'DELIVERED',
+    CANCELLED: 'CANCELLED',
+  };
+
+  const handleCopyCatalog = () => {
+    const text = buildWhatsAppCatalogBroadcastText({
+      storeName: activeCompany?.name || 'FreshMart Superstore',
+      branchName: activeCompany?.branchName || 'Main Branch',
+      phone: activeCompany?.phone || '',
+      items: workspace.items,
+    });
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(text);
+    }
+    showToast('Today’s WhatsApp Supermarket Catalog copied to clipboard.', 'success');
+  };
+
+  const handleCopyDeliveryUpdate = (ord: DeliveryOrderRecord) => {
+    const safeStage: 'RECEIVED' | 'PACKING' | 'OUT_FOR_DELIVERY' | 'DELIVERED' =
+      ord.stage === 'PACKING' ||
+      ord.stage === 'OUT_FOR_DELIVERY' ||
+      ord.stage === 'DELIVERED'
+        ? ord.stage
+        : 'RECEIVED';
+    const text = buildWhatsAppDeliveryUpdateText({
+      storeName: activeCompany?.name || 'FreshMart Superstore',
+      orderNo: ord.orderNo,
+      customerName: ord.customerName,
+      stage: safeStage,
+      riderName: ord.riderName,
+      deliverySlot: ord.deliverySlot,
+      grandTotal: ord.grandTotal,
+      paymentType: ord.paymentType,
+      upiVpa: workspace.controlRoom.upiVpa || 'freshmart@upi',
+    });
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(text);
+    }
+    showToast(`WhatsApp delivery status copied for ${ord.orderNo}.`, 'success');
+  };
+
+  const handleCreateDeliveryOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dlvCustomer.trim()) return;
+    const totalNum = Number(dlvTotal || 0);
+    const orderNo = `DLV-26-${Date.now().toString().slice(-4)}`;
+    const ok = await dispatchAction(
+      'CREATE_DELIVERY_ORDER',
+      {
+        orderNo,
+        customerName: dlvCustomer.trim(),
+        customerPhone: dlvPhone.trim(),
+        deliveryAddress: dlvAddress.trim() || 'Local Neighborhood Delivery',
+        deliverySlot: dlvSlot,
+        riderName: dlvRider,
+        stage: 'RECEIVED',
+        paymentType: dlvPaymentType,
+        grandTotal: totalNum,
+        itemsSummary: dlvItemsSummary.trim() || 'WhatsApp Grocery Order',
+        orderDate: '2026-11-26',
+      },
+      `Created home delivery order ${orderNo} for ${dlvCustomer.trim()}.`
+    );
+    if (ok) {
+      broadcastOpsEvent({
+        eventType: 'DELIVERY_DISPATCH',
+        title: `New Delivery Order · ${orderNo}`,
+        detail: `${dlvCustomer.trim()} · ${formatInr(totalNum)} · ${dlvSlot} (${dlvRider})`,
+        severity: 'info',
+      });
+      setDlvCustomer('');
+      setDlvPhone('');
+      setDlvAddress('');
+      setDlvTotal('');
+      setDlvItemsSummary('');
+      setShowNewDeliveryForm(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            CRM Pipeline & Marg Mart Online Store
+            Home Delivery Dispatch, WhatsApp Orders &amp; CRM
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Customer Follow-Ups · Institutional Sales Pipeline · Marg Mart E-Commerce Storefront Sync
+            Local Delivery Dispatch Board · Rider COD Settlement · WhatsApp Broadcasts · Marg Mart Storefront
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {deliveryEnabled && (
+            <button
+              type="button"
+              onClick={handleCopyCatalog}
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/50 px-3 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 whitespace-nowrap cursor-pointer"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>Copy WhatsApp Catalog</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>
               showToast(
-                'Marg Mart online storefront catalog & stock synced across 12 SKUs.',
+                'Marg Mart online storefront catalog & stock synced across active SKUs.',
                 'success'
               )
             }
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap cursor-pointer"
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            <span>Sync Marg Mart Store</span>
+            <span>Sync Storefront</span>
           </button>
-          <Link
-            href="/admin/crm/new"
-            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Lead / Online Order</span>
-          </Link>
+          {deliveryEnabled && viewMode === 'delivery' ? (
+            <button
+              type="button"
+              onClick={() => setShowNewDeliveryForm((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New WhatsApp Delivery Order</span>
+            </button>
+          ) : (
+            <Link
+              href="/admin/crm/new"
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 dark:bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 whitespace-nowrap"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Lead / Online Order</span>
+            </Link>
+          )}
         </div>
       </div>
 
-      <div className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 w-fit">
-        {[
-          { id: 'ALL', label: `All Records (${workspace.crmRecords.length})` },
-          {
-            id: 'MARG_MART_ORDER',
-            label: `Marg Mart Orders (${workspace.crmRecords.filter((r) => r.channel === 'MARG_MART_ORDER').length})`,
-          },
-          {
-            id: 'CRM_LEAD',
-            label: `CRM Pipeline (${workspace.crmRecords.filter((r) => r.channel === 'CRM_LEAD').length})`,
-          },
-        ].map((t) => (
+      {/* Top View Mode Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-3 py-2">
+        <div className="flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-900 p-1">
+          {deliveryEnabled && (
+            <button
+              type="button"
+              onClick={() => setViewMode('delivery')}
+              className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-semibold whitespace-nowrap cursor-pointer ${
+                viewMode === 'delivery'
+                  ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              <Bike className="h-3.5 w-3.5" />
+              <span>Home Delivery Dispatch ({workspace.deliveryOrders.length})</span>
+            </button>
+          )}
           <button
-            key={t.id}
             type="button"
-            onClick={() => setChannelTab(t.id as typeof channelTab)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
-              channelTab === t.id
-                ? 'bg-emerald-700 dark:bg-emerald-600 text-white'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            onClick={() => setViewMode('crm')}
+            className={`rounded px-3 py-1.5 text-xs font-semibold whitespace-nowrap cursor-pointer ${
+              viewMode === 'crm'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
             }`}
           >
-            {t.label}
+            CRM Leads &amp; Marg Mart ({workspace.crmRecords.length})
           </button>
-        ))}
+        </div>
+
+        {viewMode === 'delivery' && deliveryEnabled ? (
+          <div className="flex flex-wrap items-center gap-1">
+            {(
+              [
+                { id: 'ALL', label: `All (${workspace.deliveryOrders.length})` },
+                {
+                  id: 'RECEIVED',
+                  label: `Received (${workspace.deliveryOrders.filter((d) => d.stage === 'RECEIVED').length})`,
+                },
+                {
+                  id: 'PACKING',
+                  label: `Packing (${workspace.deliveryOrders.filter((d) => d.stage === 'PACKING').length})`,
+                },
+                {
+                  id: 'OUT_FOR_DELIVERY',
+                  label: `Out (${workspace.deliveryOrders.filter((d) => d.stage === 'OUT_FOR_DELIVERY').length})`,
+                },
+                {
+                  id: 'DELIVERED',
+                  label: `Delivered (${workspace.deliveryOrders.filter((d) => d.stage === 'DELIVERED').length})`,
+                },
+              ] as const
+            ).map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => setDeliveryStageFilter(st.id)}
+                className={`rounded px-2.5 py-1 text-xs font-medium whitespace-nowrap cursor-pointer ${
+                  deliveryStageFilter === st.id
+                    ? 'bg-emerald-700 text-white'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            {[
+              { id: 'ALL', label: `All (${workspace.crmRecords.length})` },
+              {
+                id: 'MARG_MART_ORDER',
+                label: `Marg Mart (${workspace.crmRecords.filter((r) => r.channel === 'MARG_MART_ORDER').length})`,
+              },
+              {
+                id: 'CRM_LEAD',
+                label: `Leads (${workspace.crmRecords.filter((r) => r.channel === 'CRM_LEAD').length})`,
+              },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setChannelTab(t.id as typeof channelTab)}
+                className={`rounded px-2.5 py-1 text-xs font-medium whitespace-nowrap cursor-pointer ${
+                  channelTab === t.id
+                    ? 'bg-emerald-700 text-white'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
-              <th className="py-3 px-4">Customer / Channel</th>
-              <th className="py-3 px-3">Order / Inquiry Items</th>
-              <th className="py-3 px-3">Follow-Up Date</th>
-              <th className="py-3 px-3 text-right">Value</th>
-              <th className="py-3 px-3">Stage</th>
-              <th className="py-3 px-4 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filtered.map((r) => (
-              <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
-                <td className="py-3 px-4">
-                  <div className="font-medium text-slate-900 dark:text-slate-100">{r.customerName}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {r.phone} · {r.channel === 'MARG_MART_ORDER' ? 'Marg Mart Online' : 'CRM Lead'}
-                  </div>
-                </td>
-                <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300 max-w-xs">
-                  <div className="truncate font-medium">{r.itemsSummary}</div>
-                  <div className="text-slate-500 dark:text-slate-400 truncate">{r.notes}</div>
-                </td>
-                <td className="py-3 px-3 font-mono text-xs text-slate-600 dark:text-slate-400">
-                  {r.nextFollowUp}
-                </td>
-                <td className="py-3 px-3 text-right font-mono text-xs font-semibold tabular-nums">
-                  {formatInr(r.orderValue)}
-                </td>
-                <td className="py-3 px-3 text-xs font-semibold text-emerald-700 dark:text-emerald-400">{r.stage}</td>
-                <td className="py-3 px-4 text-right">
-                  {r.stage !== 'Won' ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void dispatchAction(
-                          'UPDATE_CRM_STAGE',
-                          { id: r.id, stage: nextStageMap[r.stage] },
-                          `${r.customerName} advanced to ${nextStageMap[r.stage]}.`
-                        )
-                      }
-                      className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-emerald-600 dark:border-emerald-500 hover:text-emerald-700 dark:text-emerald-400 whitespace-nowrap"
-                    >
-                      Advance → {nextStageMap[r.stage]}
-                    </button>
-                  ) : (
-                    <span className="text-xs text-emerald-700 font-medium">Completed</span>
-                  )}
-                </td>
+      {/* Inline Collapsible New Delivery / WhatsApp Order Form */}
+      {viewMode === 'delivery' && deliveryEnabled && showNewDeliveryForm && (
+        <form
+          onSubmit={(e) => void handleCreateDeliveryOrder(e)}
+          className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-white dark:bg-[#111827] p-5 space-y-4"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              Create WhatsApp / Phone Home Delivery Order
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowNewDeliveryForm(false)}
+              className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <input
+              type="text"
+              required
+              value={dlvCustomer}
+              onChange={(e) => setDlvCustomer(e.target.value)}
+              placeholder="Customer Name *"
+              className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+            />
+            <input
+              type="text"
+              value={dlvPhone}
+              onChange={(e) => setDlvPhone(e.target.value)}
+              placeholder="WhatsApp / Mobile Number"
+              className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 font-mono text-xs text-slate-900 dark:text-slate-100"
+            />
+            <input
+              type="text"
+              value={dlvAddress}
+              onChange={(e) => setDlvAddress(e.target.value)}
+              placeholder="Flat / Street Delivery Address"
+              className="sm:col-span-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+            />
+            <input
+              type="text"
+              value={dlvItemsSummary}
+              onChange={(e) => setDlvItemsSummary(e.target.value)}
+              placeholder="Grocery items list (e.g. 5kg Atta, 2L Milk, Tomatoes 1kg)"
+              className="sm:col-span-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+            />
+            <input
+              type="number"
+              min="0"
+              step="1"
+              required
+              value={dlvTotal}
+              onChange={(e) => setDlvTotal(e.target.value)}
+              placeholder="Order Value (₹)"
+              className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 font-mono text-xs text-slate-900 dark:text-slate-100"
+            />
+            <select
+              value={dlvPaymentType}
+              onChange={(e) => setDlvPaymentType(e.target.value as DeliveryPaymentType)}
+              className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+            >
+              <option value="COD_UPI">COD — UPI on Delivery</option>
+              <option value="COD_CASH">COD — Cash on Delivery</option>
+              <option value="PREPAID">Prepaid</option>
+            </select>
+            <select
+              value={dlvSlot}
+              onChange={(e) => setDlvSlot(e.target.value)}
+              className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+            >
+              <option value="Express (60 min)">Express (60 min)</option>
+              <option value="Evening (5–7 PM)">Evening (5–7 PM)</option>
+              <option value="Morning (9–11 AM)">Morning (9–11 AM)</option>
+            </select>
+            <select
+              value={dlvRider}
+              onChange={(e) => setDlvRider(e.target.value)}
+              className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+            >
+              {DELIVERY_RIDERS.map((r) => (
+                <option key={r} value={r}>
+                  Rider: {r}
+                </option>
+              ))}
+            </select>
+            <div className="sm:col-span-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={syncing}
+                className="rounded-md bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 px-5 py-2 text-xs font-semibold text-white disabled:opacity-60 cursor-pointer"
+              >
+                Dispatch Order
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* Home Delivery Dispatch Board */}
+      {viewMode === 'delivery' && deliveryEnabled ? (
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
+                <th className="py-3 px-4">Order · Slot</th>
+                <th className="py-3 px-3">Customer &amp; Address</th>
+                <th className="py-3 px-3">Rider</th>
+                <th className="py-3 px-3 text-right">Amount · COD</th>
+                <th className="py-3 px-3">Stage</th>
+                <th className="py-3 px-4 text-right">Dispatch Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredDeliveries.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                    No delivery orders in this stage.
+                  </td>
+                </tr>
+              ) : (
+                filteredDeliveries.map((ord) => (
+                  <tr key={ord.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="py-3 px-4 font-mono text-xs">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">
+                        {ord.orderNo}
+                      </div>
+                      <div className="text-slate-500 dark:text-slate-400">
+                        {ord.deliverySlot}
+                        {ord.invoiceNo ? ` · ${ord.invoiceNo}` : ''}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 max-w-xs">
+                      <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {ord.customerName}
+                        {ord.customerPhone ? (
+                          <span className="ml-1.5 font-mono text-xs text-slate-500 dark:text-slate-400">
+                            {ord.customerPhone}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-slate-600 dark:text-slate-400 truncate">
+                        {ord.deliveryAddress}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {ord.itemsSummary}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <select
+                        aria-label={`Assign rider for ${ord.orderNo}`}
+                        value={ord.riderName}
+                        disabled={ord.stage === 'DELIVERED'}
+                        onChange={(e) =>
+                          void dispatchAction(
+                            'UPDATE_DELIVERY_STAGE',
+                            { id: ord.id, stage: ord.stage, riderName: e.target.value },
+                            `Assigned ${e.target.value} to ${ord.orderNo}.`
+                          )
+                        }
+                        className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      >
+                        {DELIVERY_RIDERS.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-xs tabular-nums">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">
+                        {formatInr(ord.grandTotal)}
+                      </div>
+                      <div
+                        className={
+                          ord.codCollected || ord.paymentType === 'PREPAID'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-amber-700 dark:text-amber-400'
+                        }
+                      >
+                        {ord.paymentType === 'PREPAID'
+                          ? 'PREPAID'
+                          : ord.codCollected
+                            ? 'COD COLLECTED'
+                            : ord.paymentType.replace('_', ' ')}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-xs font-semibold">
+                      <span
+                        className={
+                          ord.stage === 'DELIVERED'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : ord.stage === 'OUT_FOR_DELIVERY'
+                              ? 'text-blue-700 dark:text-blue-400'
+                              : 'text-amber-700 dark:text-amber-400'
+                        }
+                      >
+                        {ord.stage.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyDeliveryUpdate(ord)}
+                          title="Copy WhatsApp status update"
+                          className="inline-flex items-center gap-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-emerald-600 cursor-pointer"
+                        >
+                          <Copy className="h-3 w-3" />
+                          <span>WhatsApp</span>
+                        </button>
+                        {ord.stage !== 'DELIVERED' &&
+                          ord.stage !== 'OUT_FOR_DELIVERY' && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void dispatchAction(
+                                  'UPDATE_DELIVERY_STAGE',
+                                  {
+                                    id: ord.id,
+                                    stage: nextDeliveryStageMap[ord.stage],
+                                    riderName: ord.riderName,
+                                  },
+                                  `${ord.orderNo} moved to ${nextDeliveryStageMap[ord.stage].replace(/_/g, ' ')}.`
+                                )
+                              }
+                              className="rounded bg-slate-900 dark:bg-slate-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-800 whitespace-nowrap cursor-pointer"
+                            >
+                              → {nextDeliveryStageMap[ord.stage].replace(/_/g, ' ')}
+                            </button>
+                          )}
+                        {ord.stage !== 'DELIVERED' && !ord.codCollected && ord.paymentType !== 'PREPAID' ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void dispatchAction(
+                                'SETTLE_DELIVERY_COD',
+                                { id: ord.id },
+                                `Collected COD ${formatInr(ord.grandTotal)} & marked ${ord.orderNo} delivered.`
+                              )
+                            }
+                            className="rounded bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
+                          >
+                            Collect COD &amp; Deliver
+                          </button>
+                        ) : ord.stage === 'OUT_FOR_DELIVERY' ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void dispatchAction(
+                                'UPDATE_DELIVERY_STAGE',
+                                { id: ord.id, stage: 'DELIVERED', riderName: ord.riderName },
+                                `${ord.orderNo} marked Delivered.`
+                              )
+                            }
+                            className="rounded bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
+                          >
+                            Mark Delivered
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </section>
+      ) : (
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
+                <th className="py-3 px-4">Customer / Channel</th>
+                <th className="py-3 px-3">Order / Inquiry Items</th>
+                <th className="py-3 px-3">Follow-Up Date</th>
+                <th className="py-3 px-3 text-right">Value</th>
+                <th className="py-3 px-3">Stage</th>
+                <th className="py-3 px-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredCrm.map((r) => (
+                <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <td className="py-3 px-4">
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{r.customerName}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {r.phone} · {r.channel === 'MARG_MART_ORDER' ? 'Marg Mart Online' : 'CRM Lead'}
+                    </div>
+                  </td>
+                  <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-300 max-w-xs">
+                    <div className="truncate font-medium">{r.itemsSummary}</div>
+                    <div className="text-slate-500 dark:text-slate-400 truncate">{r.notes}</div>
+                  </td>
+                  <td className="py-3 px-3 font-mono text-xs text-slate-600 dark:text-slate-400">
+                    {r.nextFollowUp}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-xs font-semibold tabular-nums">
+                    {formatInr(r.orderValue)}
+                  </td>
+                  <td className="py-3 px-3 text-xs font-semibold text-emerald-700 dark:text-emerald-400">{r.stage}</td>
+                  <td className="py-3 px-4 text-right">
+                    {r.stage !== 'Won' ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void dispatchAction(
+                            'UPDATE_CRM_STAGE',
+                            { id: r.id, stage: nextStageMap[r.stage] },
+                            `${r.customerName} advanced to ${nextStageMap[r.stage]}.`
+                          )
+                        }
+                        className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-emerald-600 hover:text-emerald-700 dark:hover:text-emerald-400 whitespace-nowrap cursor-pointer"
+                      >
+                        Advance → {nextStageMap[r.stage]}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Completed</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
     </div>
   );
 }

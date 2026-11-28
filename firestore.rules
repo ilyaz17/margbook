@@ -1,0 +1,283 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions (Eight Pillars)
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          request.auth.token.email == 'mohammedilyassa@gmail.com' &&
+          request.auth.token.email_verified == true
+        )
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string &&
+        id.size() >= 1 &&
+        id.size() <= 128 &&
+        id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function isNonNegNumber(val, maxVal) {
+      return (val is int || val is float) && val >= 0 && val <= maxVal;
+    }
+
+    function hasValidParentStore(storeId) {
+      let parentStore = get(/databases/$(database)/documents/stores/$(storeId));
+      return parentStore != null &&
+        parentStore.data != null &&
+        (parentStore.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    // ===============================================================
+    // Entity Validators (Standalone, Strict Allow-Listing & Bounds)
+    // ===============================================================
+
+    function isValidUserCreate(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        data.uid is string &&
+        data.uid == userId &&
+        data.uid.size() >= 1 &&
+        data.uid.size() <= 128 &&
+        data.displayName is string &&
+        data.displayName.size() >= 1 &&
+        data.displayName.size() <= 100 &&
+        data.role is string &&
+        (data.role == 'store_operator' || (data.role == 'admin' && isAdmin())) &&
+        data.createdAt is timestamp &&
+        data.createdAt == request.time &&
+        data.updatedAt is timestamp &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidUserUpdate(newData, oldData) {
+      let changedKeys = newData.diff(oldData).affectedKeys();
+      let allowedKeys = isAdmin()
+        ? ['displayName', 'role', 'updatedAt']
+        : ['displayName', 'updatedAt'];
+      return changedKeys.hasOnly(allowedKeys) &&
+        newData.uid == oldData.uid &&
+        newData.createdAt == oldData.createdAt &&
+        newData.displayName is string &&
+        newData.displayName.size() >= 1 &&
+        newData.displayName.size() <= 100 &&
+        newData.role is string &&
+        (newData.role == 'store_operator' || newData.role == 'admin') &&
+        newData.updatedAt is timestamp &&
+        newData.updatedAt == request.time;
+    }
+
+    function isValidStoreCreate(data) {
+      return data.keys().hasAll(['ownerId', 'companyId', 'storeName', 'enabledAddonsJson', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerId', 'companyId', 'storeName', 'enabledAddonsJson', 'createdAt', 'updatedAt']) &&
+        data.ownerId is string &&
+        data.ownerId == request.auth.uid &&
+        data.ownerId.size() >= 1 &&
+        data.ownerId.size() <= 128 &&
+        (data.companyId is int || data.companyId is float) &&
+        data.companyId >= 1 &&
+        data.companyId <= 1000000 &&
+        data.storeName is string &&
+        data.storeName.size() >= 1 &&
+        data.storeName.size() <= 140 &&
+        data.enabledAddonsJson is string &&
+        data.enabledAddonsJson.size() >= 2 &&
+        data.enabledAddonsJson.size() <= 2000 &&
+        data.createdAt is timestamp &&
+        data.createdAt == request.time &&
+        data.updatedAt is timestamp &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidStoreUpdate(newData, oldData) {
+      let changedKeys = newData.diff(oldData).affectedKeys();
+      return changedKeys.hasOnly(['storeName', 'enabledAddonsJson', 'updatedAt']) &&
+        newData.ownerId == oldData.ownerId &&
+        newData.companyId == oldData.companyId &&
+        newData.createdAt == oldData.createdAt &&
+        newData.storeName is string &&
+        newData.storeName.size() >= 1 &&
+        newData.storeName.size() <= 140 &&
+        newData.enabledAddonsJson is string &&
+        newData.enabledAddonsJson.size() >= 2 &&
+        newData.enabledAddonsJson.size() <= 2000 &&
+        newData.updatedAt is timestamp &&
+        newData.updatedAt == request.time;
+    }
+
+    function isValidLiveDisplayFields(data, storeId, counterId) {
+      return data.keys().hasAll([
+          'ownerId', 'storeId', 'counterCode', 'storeName', 'branchName', 'upiVpa',
+          'customerName', 'status', 'subtotal', 'totalTax', 'couponDiscount',
+          'loyaltyDiscount', 'totalMrpSavings', 'grandTotal', 'upiAmount',
+          'couponCode', 'lastInvoiceNo', 'linesJson', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'storeId', 'counterCode', 'storeName', 'branchName', 'upiVpa',
+          'customerName', 'status', 'subtotal', 'totalTax', 'couponDiscount',
+          'loyaltyDiscount', 'totalMrpSavings', 'grandTotal', 'upiAmount',
+          'couponCode', 'lastInvoiceNo', 'linesJson', 'updatedAt'
+        ]) &&
+        data.ownerId is string &&
+        data.ownerId == request.auth.uid &&
+        data.storeId is string &&
+        data.storeId == storeId &&
+        data.counterCode is string &&
+        data.counterCode == counterId &&
+        data.counterCode.size() >= 1 &&
+        data.counterCode.size() <= 40 &&
+        data.storeName is string &&
+        data.storeName.size() >= 1 &&
+        data.storeName.size() <= 140 &&
+        data.branchName is string &&
+        data.branchName.size() <= 140 &&
+        data.upiVpa is string &&
+        data.upiVpa.size() <= 120 &&
+        data.customerName is string &&
+        data.customerName.size() <= 120 &&
+        data.status in ['IDLE', 'SCANNING', 'PAID'] &&
+        isNonNegNumber(data.subtotal, 10000000) &&
+        isNonNegNumber(data.totalTax, 10000000) &&
+        isNonNegNumber(data.couponDiscount, 10000000) &&
+        isNonNegNumber(data.loyaltyDiscount, 10000000) &&
+        isNonNegNumber(data.totalMrpSavings, 10000000) &&
+        isNonNegNumber(data.grandTotal, 10000000) &&
+        isNonNegNumber(data.upiAmount, 10000000) &&
+        data.couponCode is string &&
+        data.couponCode.size() <= 40 &&
+        data.lastInvoiceNo is string &&
+        data.lastInvoiceNo.size() <= 60 &&
+        data.linesJson is string &&
+        data.linesJson.size() >= 2 &&
+        data.linesJson.size() <= 16000 &&
+        data.updatedAt is timestamp &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidOpsEventCreate(data, storeId) {
+      return data.keys().hasAll(['ownerId', 'storeId', 'eventType', 'title', 'detail', 'severity', 'createdAt']) &&
+        data.keys().hasOnly(['ownerId', 'storeId', 'eventType', 'title', 'detail', 'severity', 'createdAt']) &&
+        data.ownerId is string &&
+        data.ownerId == request.auth.uid &&
+        data.storeId is string &&
+        data.storeId == storeId &&
+        data.eventType in ['DELIVERY_DISPATCH', 'WASTAGE_ALERT', 'ADDON_TOGGLE', 'POS_CHECKOUT'] &&
+        data.title is string &&
+        data.title.size() >= 1 &&
+        data.title.size() <= 140 &&
+        data.detail is string &&
+        data.detail.size() >= 1 &&
+        data.detail.size() <= 400 &&
+        data.severity in ['info', 'warning', 'alert'] &&
+        data.createdAt is timestamp &&
+        data.createdAt == request.time;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserCreate(request.resource.data, userId);
+      allow update: if isValidId(userId) &&
+        (isOwner(userId) || isAdmin()) &&
+        isValidUserUpdate(request.resource.data, resource.data);
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /stores/{storeId} {
+      allow get: if isValidId(storeId) &&
+        isAuthenticated() &&
+        (resource == null || resource.data.ownerId == request.auth.uid || isAdmin());
+      allow list: if isAuthenticated() &&
+        (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isValidId(storeId) &&
+        isAuthenticated() &&
+        isValidStoreCreate(request.resource.data);
+      allow update: if isValidId(storeId) &&
+        isAuthenticated() &&
+        (resource.data.ownerId == request.auth.uid || isAdmin()) &&
+        isValidStoreUpdate(request.resource.data, resource.data);
+      allow delete: if isValidId(storeId) &&
+        isAuthenticated() &&
+        (resource.data.ownerId == request.auth.uid || isAdmin());
+
+      match /liveDisplays/{counterId} {
+        allow get: if isValidId(storeId) &&
+          isValidId(counterId) &&
+          isAuthenticated() &&
+          hasValidParentStore(storeId);
+        allow list: if isValidId(storeId) &&
+          isAuthenticated() &&
+          (resource.data.ownerId == request.auth.uid || isAdmin());
+        allow create: if isValidId(storeId) &&
+          isValidId(counterId) &&
+          isAuthenticated() &&
+          hasValidParentStore(storeId) &&
+          isValidLiveDisplayFields(request.resource.data, storeId, counterId);
+        allow update: if isValidId(storeId) &&
+          isValidId(counterId) &&
+          isAuthenticated() &&
+          hasValidParentStore(storeId) &&
+          request.resource.data.ownerId == resource.data.ownerId &&
+          request.resource.data.storeId == resource.data.storeId &&
+          request.resource.data.counterCode == resource.data.counterCode &&
+          isValidLiveDisplayFields(request.resource.data, storeId, counterId);
+        allow delete: if isValidId(storeId) &&
+          isValidId(counterId) &&
+          isAuthenticated() &&
+          hasValidParentStore(storeId);
+      }
+
+      match /opsEvents/{eventId} {
+        allow get: if isValidId(storeId) &&
+          isValidId(eventId) &&
+          isAuthenticated() &&
+          hasValidParentStore(storeId);
+        allow list: if isValidId(storeId) &&
+          isAuthenticated() &&
+          (resource.data.ownerId == request.auth.uid || isAdmin());
+        allow create: if isValidId(storeId) &&
+          isValidId(eventId) &&
+          isAuthenticated() &&
+          hasValidParentStore(storeId) &&
+          isValidOpsEventCreate(request.resource.data, storeId);
+        allow update: if false;
+        allow delete: if isValidId(storeId) &&
+          isValidId(eventId) &&
+          isAuthenticated() &&
+          hasValidParentStore(storeId);
+      }
+    }
+
+    // Default-Deny Catch-All (Pillar 1)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

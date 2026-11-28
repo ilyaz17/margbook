@@ -22,6 +22,7 @@ export const MODULE_ROUTES: RouteMeta[] = [
   { id: 'gst', href: '/admin/gst', label: 'GST & E-Invoice', section: 'Finance & Tax' },
   { id: 'crm', href: '/admin/crm', label: 'CRM & Marg Mart', section: 'Finance & Tax' },
   { id: 'reports', href: '/admin/reports', label: 'Reports & P&L', section: 'System' },
+  { id: 'addons', href: '/admin/addons', label: 'Add-On Modules', shortcut: 'Alt+A', section: 'System' },
   { id: 'company-setup', href: '/admin/company/setup', label: 'Company & Branches', section: 'System' },
   { id: 'control-room', href: '/admin/control-room', label: 'Control Room', shortcut: 'Alt+C', section: 'System' },
   { id: 'search', href: '/admin/search', label: 'Search & Keys', shortcut: 'Alt+K', section: 'System' },
@@ -39,6 +40,7 @@ export function resolveModuleFromPathname(pathname: string): ModuleId {
   if (pathname.startsWith('/admin/pos') || pathname.startsWith('/admin/bills')) return 'pos';
   if (pathname.startsWith('/admin/shifts')) return 'shifts';
   if (pathname.startsWith('/admin/barcodes')) return 'barcodes';
+  if (pathname.startsWith('/admin/addons')) return 'addons';
   if (pathname.startsWith('/admin/masters') || pathname.startsWith('/admin/ledgers')) return 'masters';
   if (pathname.startsWith('/admin/sales')) return 'sales';
   if (pathname.startsWith('/admin/purchases')) return 'purchases';

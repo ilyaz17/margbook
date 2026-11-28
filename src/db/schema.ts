@@ -51,6 +51,9 @@ export const ledgers = pgTable('ledgers', {
   balanceType: text('balance_type').notNull().default('Dr'), // Dr | Cr
   creditLimit: doublePrecision('credit_limit').notNull().default(0),
   loyaltyPoints: integer('loyalty_points').notNull().default(0),
+  membershipTier: text('membership_tier').notNull().default('NONE'), // NONE | SILVER | GOLD | FAMILY_PLUS
+  membershipCardNo: text('membership_card_no').notNull().default(''),
+  walletBalance: doublePrecision('wallet_balance').notNull().default(0),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -165,6 +168,9 @@ export const invoices = pgTable('invoices', {
   loyaltyRedeemed: integer('loyalty_redeemed').notNull().default(0),
   couponCode: text('coupon_code').notNull().default(''),
   couponDiscount: doublePrecision('coupon_discount').notNull().default(0),
+  operatorName: text('operator_name').notNull().default('Rohan Sharma'),
+  checkoutSeconds: integer('checkout_seconds').notNull().default(24),
+  itemCount: integer('item_count').notNull().default(1),
   paymentModeSummary: text('payment_mode_summary').notNull().default('Cash'),
   paymentsJson: text('payments_json').notNull().default('[]'),
   itemsJson: text('items_json').notNull().default('[]'),
@@ -220,7 +226,7 @@ export const stockMovements = pgTable('stock_movements', {
   companyId: integer('company_id')
     .references(() => companies.id, { onDelete: 'cascade' })
     .notNull(),
-  movementType: text('movement_type').notNull(), // TRANSFER | ADJUSTMENT | DUMP
+  movementType: text('movement_type').notNull(), // TRANSFER | ADJUSTMENT | DUMP | WASTAGE_OUT
   itemName: text('item_name').notNull(),
   batchNo: text('batch_no').notNull(),
   fromGodown: text('from_godown').notNull(),
@@ -263,6 +269,7 @@ export const posCounters = pgTable('pos_counters', {
   walletSales: doublePrecision('wallet_sales').notNull().default(0),
   pdcSales: doublePrecision('pdc_sales').notNull().default(0),
   creditSales: doublePrecision('credit_sales').notNull().default(0),
+  pettyCashPayouts: doublePrecision('petty_cash_payouts').notNull().default(0),
   status: text('status').notNull().default('OPEN'), // OPEN | CLOSED
   lastClosedAt: text('last_closed_at').notNull().default(''),
 });
@@ -293,6 +300,11 @@ export const controlRoomSettings = pgTable('control_room_settings', {
   thermalPaperWidth: text('thermal_paper_width').notNull().default('80mm'),
   upiVpa: text('upi_vpa').notNull().default('freshmart@upi'),
   weightedBarcodePrefix: text('weighted_barcode_prefix').notNull().default('21'),
+  enabledAddons: text('enabled_addons')
+    .notNull()
+    .default(
+      '{"offline_pwa":true,"weighing_scale":true,"home_delivery":true,"petty_cash_analytics":true,"membership_wallet":true,"damage_claims":true,"wastage_tracking":true}'
+    ),
   lastBooksRebuildAt: text('last_books_rebuild_at').notNull().default('2026-11-26 09:00'),
   lastBackupAt: text('last_backup_at').notNull().default('2026-11-26 18:30'),
 });
@@ -322,6 +334,94 @@ export const shiftHandovers = pgTable('shift_handovers', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const deliveryOrders = pgTable('delivery_orders', {
+  id: serial('id').primaryKey(),
+  companyId: integer('company_id')
+    .references(() => companies.id, { onDelete: 'cascade' })
+    .notNull(),
+  orderNo: text('order_no').notNull(),
+  invoiceId: integer('invoice_id'),
+  invoiceNo: text('invoice_no').notNull().default(''),
+  customerName: text('customer_name').notNull(),
+  customerPhone: text('customer_phone').notNull().default(''),
+  deliveryAddress: text('delivery_address').notNull().default(''),
+  deliverySlot: text('delivery_slot').notNull().default('Express (60 min)'),
+  riderName: text('rider_name').notNull().default('Unassigned'),
+  stage: text('stage').notNull().default('RECEIVED'), // RECEIVED | PACKING | OUT_FOR_DELIVERY | DELIVERED | CANCELLED
+  paymentType: text('payment_type').notNull().default('COD_CASH'), // COD_CASH | COD_UPI | PREPAID
+  codCollected: boolean('cod_collected').notNull().default(false),
+  grandTotal: doublePrecision('grand_total').notNull().default(0),
+  itemsSummary: text('items_summary').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  orderDate: text('order_date').notNull().default('2026-11-26'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const pettyCashExpenses = pgTable('petty_cash_expenses', {
+  id: serial('id').primaryKey(),
+  companyId: integer('company_id')
+    .references(() => companies.id, { onDelete: 'cascade' })
+    .notNull(),
+  expenseDate: text('expense_date').notNull().default('2026-11-26'),
+  counterCode: text('counter_code').notNull().default('LANE-01'),
+  category: text('category').notNull().default('Store Supplies'),
+  paidTo: text('paid_to').notNull(),
+  amount: doublePrecision('amount').notNull().default(0),
+  narration: text('narration').notNull().default(''),
+  voucherNo: text('voucher_no').notNull().default(''),
+  operatorName: text('operator_name').notNull().default('Store Admin'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const supplierDamageClaims = pgTable('supplier_damage_claims', {
+  id: serial('id').primaryKey(),
+  companyId: integer('company_id')
+    .references(() => companies.id, { onDelete: 'cascade' })
+    .notNull(),
+  claimNo: text('claim_no').notNull(),
+  claimDate: text('claim_date').notNull().default('2026-11-26'),
+  ledgerId: integer('ledger_id'),
+  supplierName: text('supplier_name').notNull(),
+  itemId: integer('item_id'),
+  itemName: text('item_name').notNull(),
+  sku: text('sku').notNull().default(''),
+  batchNo: text('batch_no').notNull().default(''),
+  expiryDate: text('expiry_date').notNull().default(''),
+  qty: doublePrecision('qty').notNull().default(1),
+  unitCost: doublePrecision('unit_cost').notNull().default(0),
+  claimAmount: doublePrecision('claim_amount').notNull().default(0),
+  reason: text('reason').notNull().default('Transit Damage'), // Transit Damage | Expired Stock | Short Supply | Leaking Pack
+  status: text('status').notNull().default('LOGGED'), // LOGGED | CLAIM_RAISED | CREDIT_NOTE_RECEIVED | SETTLED
+  debitNoteNo: text('debit_note_no').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const wastageLogs = pgTable('wastage_logs', {
+  id: serial('id').primaryKey(),
+  companyId: integer('company_id')
+    .references(() => companies.id, { onDelete: 'cascade' })
+    .notNull(),
+  wastageNo: text('wastage_no').notNull(),
+  wastageDate: text('wastage_date').notNull().default('2026-11-26'),
+  itemId: integer('item_id'),
+  itemName: text('item_name').notNull(),
+  sku: text('sku').notNull().default(''),
+  category: text('category').notNull().default('Fresh Produce'),
+  batchId: integer('batch_id'),
+  batchNo: text('batch_no').notNull().default(''),
+  godownName: text('godown_name').notNull().default('Main Store Floor'),
+  uqc: text('uqc').notNull().default('KG'),
+  qty: doublePrecision('qty').notNull().default(0),
+  unitCost: doublePrecision('unit_cost').notNull().default(0),
+  totalLoss: doublePrecision('total_loss').notNull().default(0),
+  reason: text('reason').notNull().default('PRODUCE_SPOILAGE'), // PRODUCE_SPOILAGE | BAKERY_UNSOLD | DAIRY_EXPIRY | HANDLING_BREAKAGE | SHRINKAGE_PILFERAGE
+  disposalMethod: text('disposal_method').notNull().default('COMPOST_DISCARD'), // COMPOST_DISCARD | MARKDOWN_CLEARANCE | STAFF_WELFARE | SUPPLIER_CLAIM
+  operatorName: text('operator_name').notNull().default('Store Manager'),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const companiesRelations = relations(companies, ({ many, one }) => ({
   ledgers: many(ledgers),
   items: many(items),
@@ -332,6 +432,10 @@ export const companiesRelations = relations(companies, ({ many, one }) => ({
   posCounters: many(posCounters),
   shiftHandovers: many(shiftHandovers),
   promoCoupons: many(promoCoupons),
+  deliveryOrders: many(deliveryOrders),
+  pettyCashExpenses: many(pettyCashExpenses),
+  supplierDamageClaims: many(supplierDamageClaims),
+  wastageLogs: many(wastageLogs),
   controlRoom: one(controlRoomSettings, {
     fields: [companies.id],
     references: [controlRoomSettings.companyId],

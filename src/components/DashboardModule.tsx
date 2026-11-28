@@ -3,15 +3,21 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   Barcode,
   BarChart3,
+  Bike,
   FileCheck2,
+  Gauge,
   Monitor,
+  Puzzle,
   ReceiptIndianRupee,
   ScanBarcode,
   Settings2,
+  ShieldAlert,
+  Trash2,
   Truck,
 } from 'lucide-react';
 import {
@@ -23,7 +29,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { classifyExpiryStatus } from '../lib/erp-engine';
+import {
+  classifyExpiryStatus,
+  computeCashierSpeedLeaderboard,
+  computeWastageSummary,
+} from '../lib/erp-engine';
 import { useMargBooks } from './MargBooksContext';
 
 function formatInr(value: number): string {
@@ -34,10 +44,11 @@ function formatInr(value: number): string {
 }
 
 export function DashboardModule() {
-  const { workspace, financials, setActiveModule, theme } = useMargBooks();
+  const { workspace, financials, setActiveModule, theme, liveOpsEvents } = useMargBooks();
   const activeCompany =
     workspace.companies.find((c) => c.id === workspace.activeCompanyId) ||
     workspace.companies[0];
+  const enabledAddons = workspace.controlRoom.enabledAddons;
 
   const today = '2026-11-26';
 
@@ -111,10 +122,56 @@ export function DashboardModule() {
         wallet: acc.wallet + c.walletSales,
         pdc: acc.pdc + c.pdcSales,
         credit: acc.credit + (c.creditSales || 0),
+        pettyCash: acc.pettyCash + (c.pettyCashPayouts || 0),
       }),
-      { openingCash: 0, cash: 0, upi: 0, card: 0, wallet: 0, pdc: 0, credit: 0 }
+      {
+        openingCash: 0,
+        cash: 0,
+        upi: 0,
+        card: 0,
+        wallet: 0,
+        pdc: 0,
+        credit: 0,
+        pettyCash: 0,
+      }
     );
   }, [workspace.posCounters]);
+
+  const wastageSummary = useMemo(
+    () =>
+      computeWastageSummary({
+        wastageLogs: workspace.wastageLogs,
+        invoices: workspace.invoices,
+        asOfDate: today,
+      }),
+    [workspace.wastageLogs, workspace.invoices]
+  );
+
+  const activeDeliveries = useMemo(() => {
+    const pending = workspace.deliveryOrders.filter(
+      (d) => d.stage !== 'DELIVERED' && d.stage !== 'CANCELLED'
+    );
+    const codDue = pending
+      .filter((d) => d.paymentType !== 'PREPAID' && !d.codCollected)
+      .reduce((s, d) => s + d.grandTotal, 0);
+    return { count: pending.length, codDue };
+  }, [workspace.deliveryOrders]);
+
+  const topCashier = useMemo(() => {
+    const list = computeCashierSpeedLeaderboard(workspace.invoices);
+    return list[0] || null;
+  }, [workspace.invoices]);
+
+  const openDamageClaims = useMemo(() => {
+    const open = workspace.supplierDamageClaims.filter((c) => c.status !== 'SETTLED');
+    const value = open.reduce((s, c) => s + c.claimAmount, 0);
+    return { count: open.length, value };
+  }, [workspace.supplierDamageClaims]);
+
+  const activeAddonsCount = useMemo(
+    () => Object.values(enabledAddons || {}).filter(Boolean).length,
+    [enabledAddons]
+  );
 
   const kpis = [
     {
@@ -273,6 +330,95 @@ export function DashboardModule() {
         ))}
       </section>
 
+      {/* Add-On Operations Pulse Strip */}
+      <section
+        aria-label="Supermarket Add-On Operations Pulse"
+        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
+      >
+        {enabledAddons?.wastage_tracking !== false && (
+          <Link
+            href="/admin/inventory"
+            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 hover:border-amber-500/70 transition-colors"
+          >
+            <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>Wastage &amp; Shrinkage Loss</span>
+              <Trash2 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="mt-1.5 font-mono text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+              {formatInr(wastageSummary.todayLoss)}{' '}
+              <span className="text-xs font-normal text-slate-500 dark:text-slate-400">today</span>
+            </div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+              {wastageSummary.wastagePercentOfSales}% of sales · {workspace.wastageLogs.length} write-offs
+            </div>
+          </Link>
+        )}
+
+        {enabledAddons?.home_delivery !== false && (
+          <Link
+            href="/admin/crm"
+            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 hover:border-emerald-500/70 transition-colors"
+          >
+            <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>Home Delivery Dispatch</span>
+              <Bike className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="mt-1.5 font-mono text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+              {activeDeliveries.count} Active Orders
+            </div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+              COD Pending {formatInr(activeDeliveries.codDue)}
+            </div>
+          </Link>
+        )}
+
+        {enabledAddons?.petty_cash_analytics !== false && (
+          <Link
+            href="/admin/shifts"
+            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 hover:border-emerald-500/70 transition-colors"
+          >
+            <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>Fastest Checkout Speed</span>
+              <Gauge className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="mt-1.5 font-mono text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+              {topCashier ? `${topCashier.avgSecondsPerBill}s / bill` : '—'}
+            </div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 truncate">
+              {topCashier
+                ? `${topCashier.operatorName} · ${topCashier.itemsPerMin} items/min`
+                : 'Log POS bills to rank lanes'}
+            </div>
+          </Link>
+        )}
+
+        <Link
+          href={enabledAddons?.damage_claims !== false ? '/admin/purchases' : '/admin/addons'}
+          className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 hover:border-emerald-500/70 transition-colors"
+        >
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span>
+              {enabledAddons?.damage_claims !== false
+                ? 'Supplier Damage Claims'
+                : 'Add-On Modules'}
+            </span>
+            {enabledAddons?.damage_claims !== false ? (
+              <ShieldAlert className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+            ) : (
+              <Puzzle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            )}
+          </div>
+          <div className="mt-1.5 font-mono text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+            {enabledAddons?.damage_claims !== false
+              ? `${openDamageClaims.count} Open (${formatInr(openDamageClaims.value)})`
+              : `${activeAddonsCount} / 7 Enabled`}
+          </div>
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {activeAddonsCount} of 7 store add-ons active · Manage in Add-Ons
+          </div>
+        </Link>
+      </section>
+
       {/* Main Analytics + Quick Shortcuts Row */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Sales vs Purchase & Expense Trend Chart */}
@@ -426,7 +572,7 @@ export function DashboardModule() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {workspace.posCounters.map((c) => {
-                  const drawerTotal = c.openingCash + c.cashSales;
+                  const drawerTotal = c.openingCash + c.cashSales - (c.pettyCashPayouts || 0);
                   const digital = c.upiSales + c.cardSales + c.walletSales;
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
@@ -461,7 +607,9 @@ export function DashboardModule() {
                     {formatInr(counterTotals.upi + counterTotals.card + counterTotals.wallet)}
                   </td>
                   <td className="pt-2.5 pl-2 text-right font-mono tabular-nums text-xs text-emerald-700 dark:text-emerald-400">
-                    {formatInr(counterTotals.openingCash + counterTotals.cash)}
+                    {formatInr(
+                      counterTotals.openingCash + counterTotals.cash - counterTotals.pettyCash
+                    )}
                   </td>
                 </tr>
               </tfoot>
@@ -556,6 +704,69 @@ export function DashboardModule() {
           </div>
         </section>
       </div>
+
+      {/* Live Store Activity Feed */}
+      <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Live Store Activity Feed
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Instant cross-device stream for checkouts, delivery dispatches, wastage alerts &amp; module updates
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/admin/addons"
+            className="text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline whitespace-nowrap"
+          >
+            Add-On Store ({activeAddonsCount}/7)
+          </Link>
+        </div>
+
+        {liveOpsEvents.length === 0 ? (
+          <div className="py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+            Live feed is ready. Complete a POS bill, log a wastage write-off, dispatch a delivery order, or toggle an add-on module to see instant updates here.
+          </div>
+        ) : (
+          <div className="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+            {liveOpsEvents.slice(0, 6).map((evt) => (
+              <div key={evt.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-mono text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${
+                        evt.severity === 'alert'
+                          ? 'border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40'
+                          : evt.severity === 'warning'
+                            ? 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40'
+                            : 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40'
+                      }`}
+                    >
+                      {evt.eventType.replace('_', ' ')}
+                    </span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                      {evt.title}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-slate-500 dark:text-slate-400 truncate">
+                    {evt.detail}
+                  </div>
+                </div>
+                <span className="font-mono text-[11px] text-slate-400 shrink-0 tabular-nums">
+                  {new Date(evt.createdAtMs).toLocaleTimeString('en-IN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

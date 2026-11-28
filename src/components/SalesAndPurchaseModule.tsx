@@ -2,9 +2,13 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { FileUp, Plus, ScanBarcode } from 'lucide-react';
-import { parsePurchaseImportCsv } from '../lib/erp-engine';
-import type { PurchaseDocType, SaleDocType } from '../types/erp';
+import { FileUp, Plus, ScanBarcode, ShieldAlert } from 'lucide-react';
+import { parsePurchaseImportCsv, round2 } from '../lib/erp-engine';
+import type {
+  DamageClaimReason,
+  PurchaseDocType,
+  SaleDocType,
+} from '../types/erp';
 import { useMargBooks } from './MargBooksContext';
 
 function formatInr(n: number) {
@@ -207,8 +211,9 @@ India Gate Basmati Rice 5kg,8901526100105,10063020,IG26-IMP9,2027-11-30,50,495.0
 Amul Pasteurised Butter 500g,8901262010016,04051000,AM26-IMP2,2027-05-15,40,226.00,12`;
 
 export function PurchaseModule() {
-  const { workspace, dispatchAction } = useMargBooks();
-  const [subTab, setSubTab] = useState<'register' | 'import' | 'compare'>('register');
+  const { workspace, dispatchAction, syncing } = useMargBooks();
+  const damageClaimsEnabled = workspace.controlRoom.enabledAddons?.damage_claims !== false;
+  const [subTab, setSubTab] = useState<'register' | 'claims' | 'import' | 'compare'>('register');
   const [docTypeFilter, setDocTypeFilter] = useState<'ALL' | PurchaseDocType>('ALL');
   const [csvText, setCsvText] = useState(SAMPLE_PURCHASE_CSV);
   const [importSource, setImportSource] = useState<'CSV' | 'Excel' | 'PDF'>('CSV');
@@ -217,6 +222,22 @@ export function PurchaseModule() {
     String(suppliers[0]?.id || 5)
   );
   const [supplierBillNo, setSupplierBillNo] = useState('SUP-INV-9921');
+
+  // Supplier Damage Claim Form State
+  const [claimSupplierId, setClaimSupplierId] = useState<string>(
+    String(suppliers[0]?.id || '')
+  );
+  const [claimItemId, setClaimItemId] = useState<string>(
+    String(workspace.items[0]?.id || '')
+  );
+  const [claimBatchNo, setClaimBatchNo] = useState<string>('DMG-26A');
+  const [claimExpiry, setClaimExpiry] = useState<string>('2026-12-30');
+  const [claimQty, setClaimQty] = useState<string>('6');
+  const [claimUnitCost, setClaimUnitCost] = useState<string>(
+    String(workspace.items[0]?.purchaseRate || 100)
+  );
+  const [claimReason, setClaimReason] = useState<DamageClaimReason>('Transit Damage');
+  const [claimNotes, setClaimNotes] = useState<string>('');
 
   const parsedImport = useMemo(() => parsePurchaseImportCsv(csvText), [csvText]);
 
@@ -297,6 +318,48 @@ export function PurchaseModule() {
     );
   };
 
+  const claimStats = useMemo(() => {
+    const open = workspace.supplierDamageClaims.filter((c) => c.status !== 'SETTLED');
+    const converted = workspace.supplierDamageClaims.filter((c) => Boolean(c.debitNoteNo));
+    return {
+      openCount: open.length,
+      claimableValue: round2(open.reduce((s, c) => s + c.claimAmount, 0)),
+      convertedCount: converted.length,
+    };
+  }, [workspace.supplierDamageClaims]);
+
+  const handleLogDamageClaim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const sup = suppliers.find((s) => s.id === Number(claimSupplierId)) || suppliers[0];
+    const item = workspace.items.find((i) => i.id === Number(claimItemId)) || workspace.items[0];
+    if (!sup || !item) return;
+    const qty = Number(claimQty);
+    const unitCost = Number(claimUnitCost);
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitCost) || unitCost <= 0) return;
+
+    const ok = await dispatchAction(
+      'CREATE_DAMAGE_CLAIM',
+      {
+        claimDate: '2026-11-26',
+        ledgerId: sup.id,
+        supplierName: sup.name,
+        itemId: item.id,
+        itemName: item.name,
+        sku: item.sku,
+        batchNo: claimBatchNo.trim() || 'DMG-26',
+        expiryDate: claimExpiry,
+        qty,
+        unitCost,
+        reason: claimReason,
+        notes: claimNotes.trim(),
+      },
+      `Logged supplier damage claim (${formatInr(round2(qty * unitCost))}) against ${sup.name}.`
+    );
+    if (ok) {
+      setClaimNotes('');
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -328,9 +391,12 @@ export function PurchaseModule() {
 
       {/* Sub-navigation */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-4 py-2.5">
-        <div className="flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-900 p-1">
+        <div className="flex flex-wrap items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-900 p-1">
           {[
             { id: 'register', label: `Purchase Register (${workspace.purchases.length})` },
+            ...(damageClaimsEnabled
+              ? [{ id: 'claims', label: `Damage & Return Claims (${workspace.supplierDamageClaims.length})` }]
+              : []),
             { id: 'import', label: 'Online Purchase Import (CSV/Excel/PDF)' },
             { id: 'compare', label: 'Supplier Rate Comparison' },
           ].map((t) => (
@@ -338,10 +404,10 @@ export function PurchaseModule() {
               key={t.id}
               type="button"
               onClick={() => setSubTab(t.id as typeof subTab)}
-              className={`rounded px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
+              className={`rounded px-3 py-1.5 text-xs font-medium whitespace-nowrap cursor-pointer ${
                 subTab === t.id
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
               }`}
             >
               {t.label}
@@ -413,6 +479,285 @@ export function PurchaseModule() {
             </tbody>
           </table>
         </section>
+      )}
+
+      {subTab === 'claims' && damageClaimsEnabled && (
+        <div className="space-y-5">
+          {/* Claims KPI Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Open Supplier Claims</div>
+              <div className="mt-1 font-mono text-xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+                {claimStats.openCount} Claims
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Total Claimable Value</div>
+              <div className="mt-1 font-mono text-xl font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                {formatInr(claimStats.claimableValue)}
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Converted to Debit Notes</div>
+              <div className="mt-1 font-mono text-xl font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                {claimStats.convertedCount} Debit Notes
+              </div>
+            </div>
+          </div>
+
+          {/* Inline Log Supplier Damage / Return Claim Form */}
+          <form
+            onSubmit={(e) => void handleLogDamageClaim(e)}
+            className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    Log Supplier Damage / Expiry Return Claim
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Track broken cartons, short supply, or expired stock and convert to GST Debit Notes in one click.
+                  </p>
+                </div>
+              </div>
+              <div className="font-mono text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+                Claim: {formatInr(round2(Number(claimQty || 0) * Number(claimUnitCost || 0)))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Supplier
+                </label>
+                <select
+                  value={claimSupplierId}
+                  onChange={(e) => setClaimSupplierId(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Product SKU
+                </label>
+                <select
+                  value={claimItemId}
+                  onChange={(e) => {
+                    setClaimItemId(e.target.value);
+                    const matched = workspace.items.find((i) => i.id === Number(e.target.value));
+                    if (matched) setClaimUnitCost(String(matched.purchaseRate));
+                  }}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  {workspace.items.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Batch &amp; Expiry
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={claimBatchNo}
+                    onChange={(e) => setClaimBatchNo(e.target.value)}
+                    placeholder="Batch"
+                    className="w-1/2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  />
+                  <input
+                    type="date"
+                    value={claimExpiry}
+                    onChange={(e) => setClaimExpiry(e.target.value)}
+                    className="w-1/2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Claim Reason
+                </label>
+                <select
+                  value={claimReason}
+                  onChange={(e) => setClaimReason(e.target.value as DamageClaimReason)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  <option value="Transit Damage">Transit Damage</option>
+                  <option value="Expired Stock">Expired Stock</option>
+                  <option value="Short Supply">Short Supply</option>
+                  <option value="Leaking Pack">Leaking Pack</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Claim Qty
+                </label>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  required
+                  value={claimQty}
+                  onChange={(e) => setClaimQty(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Unit Cost (₹)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  required
+                  value={claimUnitCost}
+                  onChange={(e) => setClaimUnitCost(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div className="sm:col-span-2 flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Notes / Carton Photo Ref
+                  </label>
+                  <input
+                    type="text"
+                    value={claimNotes}
+                    onChange={(e) => setClaimNotes(e.target.value)}
+                    placeholder="e.g. 2 crushed pouches during van unload"
+                    className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={syncing}
+                  className="rounded-md bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white whitespace-nowrap disabled:opacity-60 cursor-pointer"
+                >
+                  Log Claim
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Claims Register Table */}
+          <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-left text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <th className="py-3 px-4">Claim No · Date</th>
+                  <th className="py-3 px-3">Supplier &amp; Item</th>
+                  <th className="py-3 px-3">Reason · Batch</th>
+                  <th className="py-3 px-3 text-right">Claim Value</th>
+                  <th className="py-3 px-3">Stage / Debit Note</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {workspace.supplierDamageClaims.map((cl) => (
+                  <tr key={cl.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="py-3 px-4 font-mono text-xs">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">
+                        {cl.claimNo}
+                      </div>
+                      <div className="text-slate-500 dark:text-slate-400">{cl.claimDate}</div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {cl.itemName}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        {cl.supplierName}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-xs">
+                      <div className="font-medium text-slate-800 dark:text-slate-200">
+                        {cl.reason}
+                      </div>
+                      <div className="font-mono text-slate-500 dark:text-slate-400">
+                        {cl.batchNo} · {cl.qty} × ₹{cl.unitCost}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                      {formatInr(cl.claimAmount)}
+                    </td>
+                    <td className="py-3 px-3 text-xs">
+                      <div className="font-semibold text-amber-700 dark:text-amber-400">
+                        {cl.status.replace(/_/g, ' ')}
+                      </div>
+                      {cl.debitNoteNo && (
+                        <div className="font-mono text-[11px] text-emerald-700 dark:text-emerald-400">
+                          {cl.debitNoteNo}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                        {cl.status === 'LOGGED' && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void dispatchAction(
+                                'UPDATE_CLAIM_STATUS',
+                                { id: cl.id, status: 'CLAIM_RAISED' },
+                                `Claim ${cl.claimNo} marked as Raised with supplier.`
+                              )
+                            }
+                            className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-emerald-600 cursor-pointer"
+                          >
+                            Raise Claim
+                          </button>
+                        )}
+                        {!cl.debitNoteNo && cl.status !== 'SETTLED' && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void dispatchAction(
+                                'CONVERT_CLAIM_TO_DEBIT_NOTE',
+                                { id: cl.id },
+                                `Converted ${cl.claimNo} to Purchase Return Debit Note & adjusted stock.`
+                              )
+                            }
+                            className="rounded bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
+                          >
+                            Convert to Debit Note
+                          </button>
+                        )}
+                        {cl.status !== 'SETTLED' && cl.debitNoteNo && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void dispatchAction(
+                                'UPDATE_CLAIM_STATUS',
+                                { id: cl.id, status: 'SETTLED' },
+                                `Claim ${cl.claimNo} marked Settled.`
+                              )
+                            }
+                            className="rounded border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:text-emerald-200 cursor-pointer"
+                          >
+                            Mark Settled
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        </div>
       )}
 
       {subTab === 'import' && (

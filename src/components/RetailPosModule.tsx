@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Barcode,
+  Bike,
   Camera,
   CameraOff,
   CreditCard,
@@ -13,6 +14,7 @@ import {
   Monitor,
   PauseCircle,
   PlayCircle,
+  Plug,
   Plus,
   QrCode,
   RotateCcw,
@@ -25,6 +27,7 @@ import {
   Volume2,
   VolumeX,
   Wallet,
+  WifiOff,
   X,
 } from 'lucide-react';
 import {
@@ -36,13 +39,17 @@ import {
   evaluatePromoCoupon,
   generateDeterministicIrn,
   parseBarcodeOrPluInput,
+  parseSerialScaleReading,
   round2,
   round3,
+  validateFamilyWalletPayment,
   validateMultiPayments,
   validateUdhaarLimit,
   type RawCartLine,
 } from '../lib/erp-engine';
+import { publishLiveDisplayToFirestore } from '../lib/firestore-realtime';
 import type {
+  DeliveryPaymentType,
   HeldCart,
   InventoryItem,
   InvoiceRecord,
@@ -79,15 +86,30 @@ const INDIAN_CASH_NOTES = [50, 100, 200, 500, 2000];
 
 export function RetailPosModule() {
   const router = useRouter();
-  const { workspace, dispatchActionWithResult, showToast } = useMargBooks();
+  const {
+    workspace,
+    dispatchActionWithResult,
+    showToast,
+    isOnline,
+    queueOfflineInvoice,
+    broadcastOpsEvent,
+  } = useMargBooks();
   const activeCompany =
     workspace.companies.find((c) => c.id === workspace.activeCompanyId) ||
     workspace.companies[0];
+  const enabledAddons = workspace.controlRoom.enabledAddons;
+  const scaleAddonEnabled = enabledAddons?.weighing_scale !== false;
+  const deliveryAddonEnabled = enabledAddons?.home_delivery !== false;
+  const walletAddonEnabled = enabledAddons?.membership_wallet !== false;
+  const offlineAddonEnabled = enabledAddons?.offline_pwa !== false;
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const lastCameraScanRef = useRef<{ code: string; ts: number }>({ code: '', ts: 0 });
+  const cartStartMsRef = useRef<number | null>(null);
+  const serialPortRef = useRef<{ close?: () => Promise<void> } | null>(null);
+  const serialReaderRef = useRef<{ cancel?: () => Promise<void> } | null>(null);
 
   const [posMode, setPosMode] = useState<'BILLING' | 'RETURN'>('BILLING');
   const [selectedCounter, setSelectedCounter] = useState<string>(
@@ -105,6 +127,24 @@ export function RetailPosModule() {
   const [weighingItem, setWeighingItem] = useState<InventoryItem | null>(null);
   const [customKgInput, setCustomKgInput] = useState('1.00');
   const [redeemPoints, setRedeemPoints] = useState(0);
+
+  // Live Digital Weighing Scale State (Web Serial + Test Bench)
+  const [scaleOpen, setScaleOpen] = useState(false);
+  const [scaleConnected, setScaleConnected] = useState(false);
+  const [scaleRawKg, setScaleRawKg] = useState(0);
+  const [scaleTareKg, setScaleTareKg] = useState(0);
+  const [scaleStable, setScaleStable] = useState(true);
+  const [scaleStatusMsg, setScaleStatusMsg] = useState(
+    'Connect USB/RS-232 scale or tap Test Scale Bench weights.'
+  );
+
+  // Home Delivery Assignment Toggle State
+  const [assignDelivery, setAssignDelivery] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliverySlot, setDeliverySlot] = useState('Express (60 min)');
+  const [deliveryRider, setDeliveryRider] = useState('Arjun Kumar');
+  const [deliveryPaymentType, setDeliveryPaymentType] =
+    useState<DeliveryPaymentType>('COD_UPI');
 
   // Promo Coupon State
   const [couponInput, setCouponInput] = useState('');
@@ -133,6 +173,7 @@ export function RetailPosModule() {
   const today = '2026-11-26';
   const weightedPrefix = workspace.controlRoom.weightedBarcodePrefix || '21';
   const storeUpiVpa = workspace.controlRoom.upiVpa || 'freshmart@upi';
+  const scaleNetKg = round3(Math.max(0, scaleRawKg - scaleTareKg));
 
   useEffect(() => {
     barcodeInputRef.current?.focus();
@@ -144,8 +185,97 @@ export function RetailPosModule() {
         // Ignore storage errors
       }
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      void serialReaderRef.current?.cancel?.();
+      void serialPortRef.current?.close?.();
+    };
   }, []);
+
+  const handleDisconnectScale = useCallback(async () => {
+    try {
+      await serialReaderRef.current?.cancel?.();
+      await serialPortRef.current?.close?.();
+    } catch {
+      // Ignore disconnect errors
+    }
+    serialReaderRef.current = null;
+    serialPortRef.current = null;
+    setScaleConnected(false);
+    setScaleStatusMsg('Scale disconnected. You can reconnect or use Test Scale Bench.');
+  }, []);
+
+  const handleConnectSerialScale = async () => {
+    const navSerial = (
+      navigator as unknown as {
+        serial?: {
+          requestPort: () => Promise<{
+            open: (opts: { baudRate: number }) => Promise<void>;
+            close: () => Promise<void>;
+            readable?: ReadableStream<Uint8Array>;
+          }>;
+        };
+      }
+    ).serial;
+
+    if (!navSerial) {
+      setScaleStatusMsg(
+        'Web Serial requires Chrome/Edge desktop. Use Test Scale Bench presets below to simulate live weights.'
+      );
+      return;
+    }
+    try {
+      const port = await navSerial.requestPort();
+      await port.open({ baudRate: 9600 });
+      serialPortRef.current = port;
+      setScaleConnected(true);
+      setScaleStatusMsg('Connected to digital weighing scale at 9600 baud.');
+
+      if (port.readable) {
+        const decoder = new TextDecoder();
+        const reader = port.readable.getReader();
+        serialReaderRef.current = reader;
+        let buffer = '';
+        void (async () => {
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value) {
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split(/\r?\n/);
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                  const parsed = parseSerialScaleReading(line);
+                  if (parsed) {
+                    setScaleRawKg(parsed.weightKg);
+                    setScaleStable(parsed.stable);
+                  }
+                }
+              }
+            }
+          } catch {
+            // Port closed
+          } finally {
+            setScaleConnected(false);
+          }
+        })();
+      }
+    } catch {
+      setScaleStatusMsg('Scale port selection cancelled. Use Test Scale Bench below anytime.');
+    }
+  };
+
+  const applySimulatedScaleWeight = (kg: number) => {
+    const parsed = parseSerialScaleReading(`ST,GS,+${kg.toFixed(3)}kg`);
+    if (parsed) {
+      setScaleRawKg(parsed.weightKg);
+      setScaleTareKg(0);
+      setScaleStable(parsed.stable);
+      setCustomKgInput(parsed.weightKg.toFixed(3));
+      setScaleStatusMsg(`Test Scale Bench reading locked: ${parsed.weightKg.toFixed(3)} kg`);
+    }
+  };
 
   const toggleSound = () => {
     setSoundEnabled((prev) => {
@@ -313,6 +443,25 @@ export function RetailPosModule() {
     [selectedCustomer, creditSplitAmount]
   );
 
+  const walletSplitAmount = useMemo(
+    () =>
+      round2(
+        effectivePayments
+          .filter((p) => p.mode === 'Wallet')
+          .reduce((s, p) => s + (Number(p.amount) || 0), 0)
+      ),
+    [effectivePayments]
+  );
+
+  const walletCheck = useMemo(
+    () =>
+      validateFamilyWalletPayment({
+        customer: selectedCustomer,
+        walletAmount: walletSplitAmount,
+      }),
+    [selectedCustomer, walletSplitAmount]
+  );
+
   const upiSplitAmount = useMemo(
     () =>
       round2(
@@ -326,8 +475,19 @@ export function RetailPosModule() {
   const hasCashPayment = effectivePayments.some((p) => p.mode === 'Cash');
   const hasUpiPayment = effectivePayments.some((p) => p.mode === 'UPI');
 
-  // Broadcast live basket updates to Customer-Facing Second Screen
+  // Broadcast live basket updates to Customer-Facing Second Screen (Local Broadcast + Firestore)
   useEffect(() => {
+    const liveLines = calculatedBill.lines.map((ln) => ({
+      name: ln.name,
+      qty: ln.qty,
+      uqc: ln.uqc,
+      mrp: ln.mrp,
+      rate: ln.rate,
+      lineTotal: ln.lineTotal,
+    }));
+    const liveStatus = calculatedBill.lines.length > 0 ? 'SCANNING' : 'IDLE';
+    const liveUpiAmount = upiSplitAmount > 0 ? upiSplitAmount : calculatedBill.grandTotal;
+
     broadcastCustomerDisplay({
       updatedAt: new Date().toISOString(),
       storeName: activeCompany?.name || 'FreshMart Superstore',
@@ -335,14 +495,7 @@ export function RetailPosModule() {
       counterCode: selectedCounter,
       customerName: selectedCustomer?.name || 'Walk-in Shopper',
       upiVpa: storeUpiVpa,
-      lines: calculatedBill.lines.map((ln) => ({
-        name: ln.name,
-        qty: ln.qty,
-        uqc: ln.uqc,
-        mrp: ln.mrp,
-        rate: ln.rate,
-        lineTotal: ln.lineTotal,
-      })),
+      lines: liveLines,
       subtotal: calculatedBill.subtotal,
       totalTax: calculatedBill.totalTax,
       couponCode: calculatedBill.couponCode,
@@ -350,10 +503,39 @@ export function RetailPosModule() {
       loyaltyDiscount: calculatedBill.loyaltyDiscountAmount,
       totalMrpSavings: calculatedBill.totalMrpSavings,
       grandTotal: calculatedBill.grandTotal,
-      upiAmount: upiSplitAmount > 0 ? upiSplitAmount : calculatedBill.grandTotal,
-      status: calculatedBill.lines.length > 0 ? 'SCANNING' : 'IDLE',
+      upiAmount: liveUpiAmount,
+      status: liveStatus,
     });
+
+    const syncTimer = window.setTimeout(() => {
+      void publishLiveDisplayToFirestore(
+        workspace.activeCompanyId,
+        {
+          storeName: activeCompany?.name || 'FreshMart Superstore',
+          branchName: activeCompany?.branchName || 'Main Flagship Store',
+          upiVpa: storeUpiVpa,
+          customerName: selectedCustomer?.name || 'Walk-in Shopper',
+          counterCode: selectedCounter,
+          status: liveStatus,
+          subtotal: calculatedBill.subtotal,
+          totalTax: calculatedBill.totalTax,
+          couponDiscount: calculatedBill.couponDiscountAmount,
+          loyaltyDiscount: calculatedBill.loyaltyDiscountAmount,
+          totalMrpSavings: calculatedBill.totalMrpSavings,
+          grandTotal: calculatedBill.grandTotal,
+          upiAmount: liveUpiAmount,
+          couponCode: calculatedBill.couponCode,
+          lastInvoiceNo: '',
+          lines: liveLines,
+        },
+        workspace.controlRoom.enabledAddons
+      );
+    }, 250);
+
+    return () => window.clearTimeout(syncTimer);
   }, [
+    workspace.activeCompanyId,
+    workspace.controlRoom.enabledAddons,
     activeCompany,
     selectedCounter,
     selectedCustomer,
@@ -369,7 +551,7 @@ export function RetailPosModule() {
 
       if ((item.isWeighed || item.uqc === 'KG') && !skipWeighPrompt) {
         setWeighingItem(item);
-        setCustomKgInput('1.00');
+        setCustomKgInput(scaleNetKg > 0 ? scaleNetKg.toFixed(3) : '1.00');
         return;
       }
 
@@ -381,6 +563,9 @@ export function RetailPosModule() {
 
       const normalizedAdd = round3(qtyToAdd);
       setCart((prev) => {
+        if (prev.length === 0) {
+          cartStartMsRef.current = Date.now();
+        }
         const idx = prev.findIndex((line) => line.item.id === item.id);
         if (idx >= 0) {
           const next = [...prev];
@@ -420,12 +605,34 @@ export function RetailPosModule() {
       // Reset single cash tender back to auto-sync exact total unless split
       setPayments((prev) => (prev.length === 1 ? [{ ...prev[0], amount: 0 }] : prev));
     },
-    [itemStockMap, workspace.controlRoom.allowNegativeStock, showToast, soundEnabled]
+    [itemStockMap, workspace.controlRoom.allowNegativeStock, showToast, soundEnabled, scaleNetKg]
   );
 
   const processScannedCode = useCallback(
     (rawCode: string) => {
-      const parsed = parseBarcodeOrPluInput(rawCode, weightedPrefix);
+      const trimmed = rawCode.trim();
+      if (!trimmed) return false;
+
+      // Membership Card Barcode Lookup (e.g. FM-MEM-1042)
+      if (walletAddonEnabled) {
+        const matchedMember = customers.find(
+          (c) =>
+            c.membershipCardNo &&
+            c.membershipCardNo.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (matchedMember) {
+          setSelectedCustomerId(matchedMember.id);
+          setRedeemPoints(0);
+          playCheckoutBeep('scan', soundEnabled);
+          showToast(
+            `Member Card Matched: ${matchedMember.name} (${(matchedMember.membershipTier || 'SILVER').replace('_', ' ')} · Wallet ${formatInr(matchedMember.walletBalance || 0)})`,
+            'success'
+          );
+          return true;
+        }
+      }
+
+      const parsed = parseBarcodeOrPluInput(trimmed, weightedPrefix);
       const q = parsed.query.toLowerCase();
       if (!q) return false;
 
@@ -465,7 +672,15 @@ export function RetailPosModule() {
       showToast(`No supermarket item matched "${rawCode}".`, 'warning');
       return false;
     },
-    [workspace.items, weightedPrefix, addItemToCart, showToast, soundEnabled]
+    [
+      walletAddonEnabled,
+      customers,
+      workspace.items,
+      weightedPrefix,
+      addItemToCart,
+      showToast,
+      soundEnabled,
+    ]
   );
 
   const handleBarcodeSubmit = (e: React.FormEvent) => {
@@ -734,6 +949,11 @@ export function RetailPosModule() {
       playCheckoutBeep('error', soundEnabled);
       return;
     }
+    if (walletAddonEnabled && walletSplitAmount > 0 && !walletCheck.allowed) {
+      setCheckoutError(walletCheck.error || 'Insufficient Family Prepaid Wallet balance.');
+      playCheckoutBeep('error', soundEnabled);
+      return;
+    }
     if (activeCounterObj?.status === 'CLOSED') {
       setCheckoutError(
         `${activeCounterObj.counterCode} is CLOSED. Reopen lane in Shifts & Cash or pick an open lane.`
@@ -760,40 +980,88 @@ export function RetailPosModule() {
         ? 'Partial'
         : 'Paid';
 
+    const checkoutSeconds = cartStartMsRef.current
+      ? Math.max(3, Math.round((Date.now() - cartStartMsRef.current) / 1000))
+      : 18;
+    const operatorName = activeCounterObj?.operatorName || 'Store Cashier';
+    const itemCount = calculatedBill.lines.length;
+
+    const invoicePayload: Record<string, unknown> = {
+      invoiceNo,
+      docType: 'POS_BILL',
+      counterCode: selectedCounter,
+      ledgerId: selectedCustomer?.id ?? null,
+      customerName: selectedCustomer?.name || 'Walk-in Retail Customer',
+      customerPhone: selectedCustomer?.phone || '',
+      customerGstin: selectedCustomer?.gstin || '',
+      invoiceDate: today,
+      subtotal: calculatedBill.subtotal,
+      discountAmount: calculatedBill.discountAmount,
+      cgstAmount: calculatedBill.cgstAmount,
+      sgstAmount: calculatedBill.sgstAmount,
+      igstAmount: calculatedBill.igstAmount,
+      roundOff: calculatedBill.roundOff,
+      grandTotal: calculatedBill.grandTotal,
+      loyaltyEarned: calculatedBill.loyaltyEarned,
+      loyaltyRedeemed: calculatedBill.loyaltyRedeemed,
+      couponCode: calculatedBill.couponCode,
+      couponDiscount: calculatedBill.couponDiscountAmount,
+      operatorName,
+      checkoutSeconds,
+      itemCount,
+      paymentModeSummary: paymentValidation.summaryLabel,
+      payments: normalizedPayments,
+      items: calculatedBill.lines,
+      irn,
+      ewayBillNo: '',
+      status: billStatus,
+      ...(deliveryAddonEnabled && assignDelivery
+        ? {
+            assignDelivery: {
+              deliveryAddress:
+                deliveryAddress.trim() ||
+                selectedCustomer?.address ||
+                'Local Neighborhood Delivery',
+              deliverySlot,
+              riderName: deliveryRider,
+              paymentType: deliveryPaymentType,
+              notes: `Linked to ${invoiceNo}`,
+            },
+          }
+        : {}),
+    };
+
+    // Offline-Ready PWA Queue Branch
+    if (offlineAddonEnabled && !isOnline) {
+      queueOfflineInvoice(invoicePayload);
+      playCheckoutBeep('cash', soundEnabled);
+      cartStartMsRef.current = null;
+      setCart([]);
+      setRedeemPoints(0);
+      setAppliedCoupon(null);
+      setCouponInput('');
+      setAssignDelivery(false);
+      setPayments([{ mode: 'Cash', amount: 0, reference: '' }]);
+      setCheckoutError(null);
+      return;
+    }
+
     const result = await dispatchActionWithResult(
       'CREATE_INVOICE',
-      {
-        invoiceNo,
-        docType: 'POS_BILL',
-        counterCode: selectedCounter,
-        ledgerId: selectedCustomer?.id ?? null,
-        customerName: selectedCustomer?.name || 'Walk-in Retail Customer',
-        customerPhone: selectedCustomer?.phone || '',
-        customerGstin: selectedCustomer?.gstin || '',
-        invoiceDate: today,
-        subtotal: calculatedBill.subtotal,
-        discountAmount: calculatedBill.discountAmount,
-        cgstAmount: calculatedBill.cgstAmount,
-        sgstAmount: calculatedBill.sgstAmount,
-        igstAmount: calculatedBill.igstAmount,
-        roundOff: calculatedBill.roundOff,
-        grandTotal: calculatedBill.grandTotal,
-        loyaltyEarned: calculatedBill.loyaltyEarned,
-        loyaltyRedeemed: calculatedBill.loyaltyRedeemed,
-        couponCode: calculatedBill.couponCode,
-        couponDiscount: calculatedBill.couponDiscountAmount,
-        paymentModeSummary: paymentValidation.summaryLabel,
-        payments: normalizedPayments,
-        items: calculatedBill.lines,
-        irn,
-        ewayBillNo: '',
-        status: billStatus,
-      },
+      invoicePayload,
       `Bill ${invoiceNo} saved (${formatInr(calculatedBill.grandTotal)})`
     );
 
     if (result.ok) {
       playCheckoutBeep('cash', soundEnabled);
+      const paidLines = calculatedBill.lines.map((ln) => ({
+        name: ln.name,
+        qty: ln.qty,
+        uqc: ln.uqc,
+        mrp: ln.mrp,
+        rate: ln.rate,
+        lineTotal: ln.lineTotal,
+      }));
       broadcastCustomerDisplay({
         updatedAt: new Date().toISOString(),
         storeName: activeCompany?.name || 'FreshMart Superstore',
@@ -801,14 +1069,7 @@ export function RetailPosModule() {
         counterCode: selectedCounter,
         customerName: selectedCustomer?.name || 'Walk-in Shopper',
         upiVpa: storeUpiVpa,
-        lines: calculatedBill.lines.map((ln) => ({
-          name: ln.name,
-          qty: ln.qty,
-          uqc: ln.uqc,
-          mrp: ln.mrp,
-          rate: ln.rate,
-          lineTotal: ln.lineTotal,
-        })),
+        lines: paidLines,
         subtotal: calculatedBill.subtotal,
         totalTax: calculatedBill.totalTax,
         couponCode: calculatedBill.couponCode,
@@ -821,11 +1082,46 @@ export function RetailPosModule() {
         lastInvoiceNo: invoiceNo,
       });
 
+      void publishLiveDisplayToFirestore(
+        workspace.activeCompanyId,
+        {
+          storeName: activeCompany?.name || 'FreshMart Superstore',
+          branchName: activeCompany?.branchName || 'Main Flagship Store',
+          upiVpa: storeUpiVpa,
+          customerName: selectedCustomer?.name || 'Walk-in Shopper',
+          counterCode: selectedCounter,
+          status: 'PAID',
+          subtotal: calculatedBill.subtotal,
+          totalTax: calculatedBill.totalTax,
+          couponDiscount: calculatedBill.couponDiscountAmount,
+          loyaltyDiscount: calculatedBill.loyaltyDiscountAmount,
+          totalMrpSavings: calculatedBill.totalMrpSavings,
+          grandTotal: calculatedBill.grandTotal,
+          upiAmount: 0,
+          couponCode: calculatedBill.couponCode,
+          lastInvoiceNo: invoiceNo,
+          lines: paidLines,
+        },
+        workspace.controlRoom.enabledAddons
+      );
+
+      broadcastOpsEvent({
+        eventType: deliveryAddonEnabled && assignDelivery ? 'DELIVERY_DISPATCH' : 'POS_CHECKOUT',
+        title:
+          deliveryAddonEnabled && assignDelivery
+            ? `Home Delivery Assigned · ${invoiceNo}`
+            : `Checkout Completed · ${invoiceNo}`,
+        detail: `${selectedCustomer?.name || 'Walk-in'} · ${formatInr(calculatedBill.grandTotal)} · ${selectedCounter} (${checkoutSeconds}s)`,
+        severity: 'info',
+      });
+
       const created = result.data?.invoices.find((inv) => inv.invoiceNo === invoiceNo);
+      cartStartMsRef.current = null;
       setCart([]);
       setRedeemPoints(0);
       setAppliedCoupon(null);
       setCouponInput('');
+      setAssignDelivery(false);
       setPayments([{ mode: 'Cash', amount: 0, reference: '' }]);
       setCheckoutError(null);
       if (created) {
@@ -836,13 +1132,28 @@ export function RetailPosModule() {
     cart.length,
     paymentValidation,
     udhaarCheck,
+    walletAddonEnabled,
+    walletSplitAmount,
+    walletCheck,
     activeCounterObj,
+    workspace.activeCompanyId,
     workspace.controlRoom.eInvoiceAutoIrn,
+    workspace.controlRoom.enabledAddons,
     activeCompany,
     effectivePayments,
     creditSplitAmount,
     calculatedBill,
+    deliveryAddonEnabled,
+    assignDelivery,
+    deliveryAddress,
+    deliverySlot,
+    deliveryRider,
+    deliveryPaymentType,
+    offlineAddonEnabled,
+    isOnline,
+    queueOfflineInvoice,
     dispatchActionWithResult,
+    broadcastOpsEvent,
     selectedCounter,
     selectedCustomer,
     storeUpiVpa,
@@ -1257,7 +1568,103 @@ export function RetailPosModule() {
                   {cameraOpen ? <CameraOff className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
                   <span className="hidden sm:inline">{cameraOpen ? 'Stop Cam' : 'Camera'}</span>
                 </button>
+                {scaleAddonEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setScaleOpen((v) => !v)}
+                    title="Toggle Live Digital Weighing Scale Bridge"
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-semibold whitespace-nowrap cursor-pointer ${
+                      scaleOpen || scaleConnected
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
+                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Scale className="h-4 w-4" />
+                    <span className="hidden sm:inline font-mono tabular-nums">
+                      {scaleNetKg > 0 ? `${scaleNetKg.toFixed(3)} kg` : 'Scale'}
+                    </span>
+                  </button>
+                )}
               </form>
+
+              {/* Inline Collapsible Live Digital Weighing Scale Bridge (Web Serial + Test Scale Bench) */}
+              {scaleAddonEnabled && scaleOpen && (
+                <div className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-white space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="rounded-md border border-emerald-500/40 bg-slate-900 px-3 py-1.5 font-mono text-xl font-bold text-emerald-400 tabular-nums">
+                        {scaleNetKg.toFixed(3)} <span className="text-xs font-medium text-emerald-300">KG</span>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-slate-100">
+                          Digital Scale Bridge · {scaleStable ? 'STABLE' : 'MOTION'}
+                        </div>
+                        <div className="text-[11px] text-slate-400">{scaleStatusMsg}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {scaleConnected ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleDisconnectScale()}
+                          className="rounded border border-red-500/50 bg-red-950/60 px-2.5 py-1 text-[11px] font-semibold text-red-200 hover:bg-red-900/60 cursor-pointer"
+                        >
+                          Disconnect
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleConnectSerialScale()}
+                          className="inline-flex items-center gap-1 rounded border border-emerald-500/50 bg-emerald-900/50 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-800/60 cursor-pointer"
+                        >
+                          <Plug className="h-3 w-3" />
+                          <span>Connect USB/RS-232</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScaleTareKg(scaleRawKg);
+                          setScaleStatusMsg(`Tare offset set at ${scaleRawKg.toFixed(3)} kg.`);
+                        }}
+                        className="rounded border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-white/20 cursor-pointer"
+                      >
+                        Tare
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setScaleOpen(false)}
+                        className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="text-slate-400">Test Scale Bench:</span>
+                    {[0.35, 0.75, 1.25, 2.5].map((wt) => (
+                      <button
+                        key={wt}
+                        type="button"
+                        onClick={() => applySimulatedScaleWeight(wt)}
+                        className="rounded border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-white hover:bg-emerald-700 cursor-pointer"
+                      >
+                        {wt.toFixed(3)} kg
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScaleRawKg(0);
+                        setScaleTareKg(0);
+                      }}
+                      className="rounded border border-white/10 px-2 py-1 font-mono text-slate-300 hover:text-white cursor-pointer"
+                    >
+                      Zero
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Inline Collapsible Camera Barcode Scanner Deck (Zero Modals) */}
               {cameraOpen && (
@@ -1341,6 +1748,15 @@ export function RetailPosModule() {
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {scaleAddonEnabled && scaleNetKg > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => addItemToCart(weighingItem, scaleNetKg, true)}
+                      className="rounded-lg bg-slate-900 dark:bg-emerald-600 px-3 py-1.5 text-xs font-semibold font-mono text-white hover:bg-slate-800 cursor-pointer"
+                    >
+                      Use Scale Weight ({scaleNetKg.toFixed(3)} kg)
+                    </button>
+                  )}
                   {QUICK_WEIGHT_PRESETS.map((preset) => (
                     <button
                       key={preset.label}
@@ -1493,12 +1909,14 @@ export function RetailPosModule() {
                   htmlFor="pos-customer-select"
                   className="text-xs font-semibold text-slate-700 dark:text-slate-300"
                 >
-                  Shopper / Loyalty Account
+                  Shopper / Member Account
                 </label>
                 {selectedCustomer && (
                   <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 tabular-nums">
-                    {selectedCustomer.loyaltyPoints} pts · Limit ₹
-                    {(selectedCustomer.creditLimit || 0).toLocaleString('en-IN')}
+                    {selectedCustomer.loyaltyPoints} pts
+                    {walletAddonEnabled && (selectedCustomer.walletBalance || 0) > 0
+                      ? ` · Wallet ₹${(selectedCustomer.walletBalance || 0).toLocaleString('en-IN')}`
+                      : ` · Limit ₹${(selectedCustomer.creditLimit || 0).toLocaleString('en-IN')}`}
                   </span>
                 )}
               </div>
@@ -1513,10 +1931,30 @@ export function RetailPosModule() {
               >
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} {c.phone ? `(${c.phone})` : ''}
+                    {c.name}
+                    {walletAddonEnabled && c.membershipTier && c.membershipTier !== 'NONE'
+                      ? ` [${c.membershipTier.replace('_', ' ')}]`
+                      : ''}
+                    {c.phone ? ` (${c.phone})` : ''}
                   </option>
                 ))}
               </select>
+              {walletAddonEnabled &&
+                selectedCustomer &&
+                (selectedCustomer.membershipCardNo ||
+                  (selectedCustomer.walletBalance || 0) > 0) && (
+                  <div className="flex items-center justify-between text-[11px] font-mono text-emerald-800 dark:text-emerald-300 bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-md px-2.5 py-1">
+                    <span>
+                      {(selectedCustomer.membershipTier || 'MEMBER').replace('_', ' ')}
+                      {selectedCustomer.membershipCardNo
+                        ? ` · ${selectedCustomer.membershipCardNo}`
+                        : ''}
+                    </span>
+                    <span className="font-semibold tabular-nums">
+                      Family Wallet: {formatInr(selectedCustomer.walletBalance || 0)}
+                    </span>
+                  </div>
+                )}
             </div>
 
             {/* Live Bill Line Items */}
@@ -1861,6 +2299,86 @@ export function RetailPosModule() {
                 </div>
               )}
 
+              {/* Family Prepaid Wallet Balance Notice */}
+              {walletAddonEnabled && walletSplitAmount > 0 && (
+                <div
+                  className={`rounded-lg border px-3 py-2 text-xs ${
+                    walletCheck.allowed
+                      ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200'
+                      : 'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200'
+                  }`}
+                >
+                  {walletCheck.allowed
+                    ? `Family Wallet Ready · Available: ${formatInr(walletCheck.availableBalance)}`
+                    : walletCheck.error}
+                </div>
+              )}
+
+              {/* Inline Collapsible Home Delivery Assignment Toggle */}
+              {deliveryAddonEnabled && (
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-2.5 space-y-2">
+                  <label className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Bike className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" />
+                      <span>Assign Home Delivery Dispatch</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={assignDelivery}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAssignDelivery(checked);
+                        if (checked && !deliveryAddress && selectedCustomer?.address) {
+                          setDeliveryAddress(selectedCustomer.address);
+                        }
+                      }}
+                      className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+                    />
+                  </label>
+                  {assignDelivery && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+                      <input
+                        type="text"
+                        value={deliveryAddress}
+                        onChange={(e) => setDeliveryAddress(e.target.value)}
+                        placeholder={selectedCustomer?.address || 'Flat / Street delivery address'}
+                        className="sm:col-span-2 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                      />
+                      <select
+                        value={deliverySlot}
+                        onChange={(e) => setDeliverySlot(e.target.value)}
+                        className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="Express (60 min)">Express (60 min)</option>
+                        <option value="Evening (5–7 PM)">Evening (5–7 PM)</option>
+                        <option value="Morning (9–11 AM)">Morning (9–11 AM)</option>
+                      </select>
+                      <select
+                        value={deliveryRider}
+                        onChange={(e) => setDeliveryRider(e.target.value)}
+                        className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="Arjun Kumar">Rider: Arjun Kumar</option>
+                        <option value="Ravi Shankar">Rider: Ravi Shankar</option>
+                        <option value="Manoj V">Rider: Manoj V</option>
+                        <option value="Unassigned">Unassigned</option>
+                      </select>
+                      <select
+                        value={deliveryPaymentType}
+                        onChange={(e) =>
+                          setDeliveryPaymentType(e.target.value as DeliveryPaymentType)
+                        }
+                        className="sm:col-span-2 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="COD_UPI">COD — Pay via UPI at Doorstep</option>
+                        <option value="COD_CASH">COD — Cash on Delivery</option>
+                        <option value="PREPAID">Prepaid at Checkout Counter</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {checkoutError && (
                 <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-3 py-2 text-xs font-medium text-red-800 dark:text-red-200">
                   {checkoutError}
@@ -1875,8 +2393,16 @@ export function RetailPosModule() {
                   disabled={cart.length === 0}
                   className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 disabled:opacity-40 px-4 py-3 text-sm font-bold text-white cursor-pointer"
                 >
-                  <CreditCard className="h-4 w-4" />
-                  <span>Save &amp; Print Bill (F12)</span>
+                  {offlineAddonEnabled && !isOnline ? (
+                    <WifiOff className="h-4 w-4" />
+                  ) : (
+                    <CreditCard className="h-4 w-4" />
+                  )}
+                  <span>
+                    {offlineAddonEnabled && !isOnline
+                      ? 'Queue Bill Offline (F12)'
+                      : 'Save & Print Bill (F12)'}
+                  </span>
                 </button>
                 <Link
                   href="/admin/sales"

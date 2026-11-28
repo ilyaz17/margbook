@@ -16,6 +16,7 @@ import {
   CUSTOMER_DISPLAY_CHANNEL,
   readLastCustomerDisplay,
 } from '../lib/barcode-utils';
+import { subscribeLiveDisplayFromFirestore } from '../lib/firestore-realtime';
 import type { CustomerDisplaySnapshot } from '../types/erp';
 import { UpiQrCodeSvg } from './QrAndBarcodeWidgets';
 import { useMargBooks } from './MargBooksContext';
@@ -33,6 +34,9 @@ export function CustomerDisplayPage() {
     workspace.companies.find((c) => c.id === workspace.activeCompanyId) ||
     workspace.companies[0];
 
+  const [selectedLane, setSelectedLane] = useState<string>(
+    workspace.posCounters[0]?.counterCode || 'LANE-01'
+  );
   const [snapshot, setSnapshot] = useState<CustomerDisplaySnapshot | null>(null);
 
   useEffect(() => {
@@ -46,7 +50,10 @@ export function CustomerDisplayPage() {
       channel = new BroadcastChannel(CUSTOMER_DISPLAY_CHANNEL);
       channel.onmessage = (event) => {
         if (event.data && typeof event.data === 'object') {
-          setSnapshot(event.data as CustomerDisplaySnapshot);
+          const incoming = event.data as CustomerDisplaySnapshot;
+          if (!incoming.counterCode || incoming.counterCode === selectedLane) {
+            setSnapshot(incoming);
+          }
         }
       };
     }
@@ -54,7 +61,10 @@ export function CustomerDisplayPage() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'freshmart-pos-display-snapshot' && e.newValue) {
         try {
-          setSnapshot(JSON.parse(e.newValue) as CustomerDisplaySnapshot);
+          const incoming = JSON.parse(e.newValue) as CustomerDisplaySnapshot;
+          if (!incoming.counterCode || incoming.counterCode === selectedLane) {
+            setSnapshot(incoming);
+          }
         } catch {
           // Ignore malformed snapshot
         }
@@ -62,12 +72,46 @@ export function CustomerDisplayPage() {
     };
     window.addEventListener('storage', onStorage);
 
+    const unsubFirestore = subscribeLiveDisplayFromFirestore(
+      workspace.activeCompanyId,
+      selectedLane,
+      (payload) => {
+        setSnapshot({
+          updatedAt: new Date().toISOString(),
+          storeName: payload.storeName,
+          branchName: payload.branchName,
+          counterCode: payload.counterCode,
+          customerName: payload.customerName,
+          upiVpa: payload.upiVpa,
+          lines: payload.lines.map((ln) => ({
+            name: ln.name,
+            qty: ln.qty,
+            uqc: ln.uqc,
+            mrp: ln.mrp,
+            rate: ln.rate,
+            lineTotal: ln.lineTotal,
+          })),
+          subtotal: payload.subtotal,
+          totalTax: payload.totalTax,
+          couponCode: payload.couponCode,
+          couponDiscount: payload.couponDiscount,
+          loyaltyDiscount: payload.loyaltyDiscount,
+          totalMrpSavings: payload.totalMrpSavings,
+          grandTotal: payload.grandTotal,
+          upiAmount: payload.upiAmount,
+          status: payload.status,
+          lastInvoiceNo: payload.lastInvoiceNo || undefined,
+        });
+      }
+    );
+
     return () => {
       window.clearTimeout(initTimer);
       if (channel) channel.close();
       window.removeEventListener('storage', onStorage);
+      if (unsubFirestore) unsubFirestore();
     };
-  }, []);
+  }, [workspace.activeCompanyId, selectedLane]);
 
   const storeName = snapshot?.storeName || activeCompany?.name || 'FreshMart Superstore';
   const branchName = snapshot?.branchName || activeCompany?.branchName || 'Main Flagship Store';
@@ -98,6 +142,21 @@ export function CustomerDisplayPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <select
+            aria-label="Monitor Checkout Lane"
+            value={selectedLane}
+            onChange={(e) => setSelectedLane(e.target.value)}
+            className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 py-2 text-xs font-mono font-semibold text-slate-700 dark:text-slate-200"
+          >
+            {(workspace.posCounters.length > 0
+              ? workspace.posCounters.map((c) => c.counterCode)
+              : ['LANE-01', 'LANE-02', 'LANE-03']
+            ).map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             onClick={toggleTheme}

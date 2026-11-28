@@ -10,6 +10,8 @@ import type {
   PurchaseRecord,
   Scheme,
   VoucherRecord,
+  WastageLogRecord,
+  WastageReason,
 } from '../types/erp';
 
 export function round2(n: number): number {
@@ -825,9 +827,11 @@ export function calculateShiftVariance(params: {
   cardSales: number;
   walletSales: number;
   pdcSales: number;
+  pettyCashPayouts?: number;
   countedCash: number;
 }): ShiftVarianceSummary {
-  const expectedCash = round2(params.openingCash + params.cashSales);
+  const pettyCash = round2(Math.max(0, params.pettyCashPayouts || 0));
+  const expectedCash = round2(params.openingCash + params.cashSales - pettyCash);
   const totalDigitalCollection = round2(
     params.upiSales + params.cardSales + params.walletSales + params.pdcSales
   );
@@ -886,6 +890,7 @@ export function buildGlobalSearchResults(
     { id: 'mod-reports', category: 'Module', title: 'Reports & Financial P&L', subtitle: 'Trial Balance, P&L, Balance Sheet & CSV export', meta: 'Reports', href: '/admin/reports' },
     { id: 'mod-shifts', category: 'Module', title: 'Shift Handover & Day-End Cash', subtitle: 'Cashier shifts, cash count variance & roles', meta: 'Alt+S', href: '/admin/shifts' },
     { id: 'mod-setup', category: 'Module', title: 'Company & Branch Setup', subtitle: 'Multi-company onboarding, GSTIN & FY setup', meta: 'Setup', href: '/admin/company/setup' },
+    { id: 'mod-addons', category: 'Module', title: 'Add-On Modules Store', subtitle: 'Toggle Offline PWA, Weighing Scale, Delivery, Wallet, Damage Claims & Wastage', meta: 'Alt+A', href: '/admin/addons' },
     { id: 'mod-ctrl', category: 'Module', title: 'Control Room Configuration', subtitle: 'POS billing rules, invoice templates & rebuild', meta: 'Alt+C', href: '/admin/control-room' },
   ];
 
@@ -997,3 +1002,230 @@ export function buildGlobalSearchResults(
 
   return results;
 }
+
+/**
+ * Parses common RS-232 / USB-Serial digital supermarket weighing scale frames
+ * (Essae, Mettler Toledo, CAS, Avery):
+ * e.g. "ST,GS,+001.250kg", "US,NT, 0.450 kg", "000.750", "W: 1250 g"
+ */
+export function parseSerialScaleReading(
+  raw: string
+): { weightKg: number; stable: boolean } | null {
+  const cleaned = raw.trim();
+  if (!cleaned) return null;
+  const upper = cleaned.toUpperCase();
+  const unstable = upper.includes('US,') || upper.includes('UNSTABLE') || upper.includes('MOTION');
+  const isGramsOnly =
+    /\b\d+(?:\.\d+)?\s*(?:G|GM|GMS)\b/i.test(cleaned) && !/KG/i.test(cleaned);
+  const match = cleaned.match(/[+-]?\s*(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const numeric = Number(match[1]);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 500000) return null;
+  const weightKg = round3(isGramsOnly ? numeric / 1000 : numeric);
+  if (weightKg > 500) return null;
+  return { weightKg, stable: !unstable };
+}
+
+export interface CashierSpeedMetrics {
+  operatorName: string;
+  billCount: number;
+  totalItems: number;
+  totalSales: number;
+  avgSecondsPerBill: number;
+  itemsPerMin: number;
+}
+
+export function computeCashierSpeedLeaderboard(
+  invoices: InvoiceRecord[]
+): CashierSpeedMetrics[] {
+  const posBills = invoices.filter(
+    (inv) => inv.docType === 'POS_BILL' || inv.docType === 'GST_INVOICE'
+  );
+  const map = new Map<
+    string,
+    { billCount: number; totalItems: number; totalSales: number; totalSeconds: number }
+  >();
+
+  for (const inv of posBills) {
+    const op = (inv.operatorName || 'Store Cashier').trim() || 'Store Cashier';
+    const prev = map.get(op) || {
+      billCount: 0,
+      totalItems: 0,
+      totalSales: 0,
+      totalSeconds: 0,
+    };
+    const itemCount =
+      inv.itemCount && inv.itemCount > 0
+        ? inv.itemCount
+        : Math.max(1, inv.items.length);
+    const secs =
+      inv.checkoutSeconds && inv.checkoutSeconds > 0 ? inv.checkoutSeconds : 24;
+    prev.billCount += 1;
+    prev.totalItems += itemCount;
+    prev.totalSales = round2(prev.totalSales + inv.grandTotal);
+    prev.totalSeconds += secs;
+    map.set(op, prev);
+  }
+
+  return Array.from(map.entries())
+    .map(([operatorName, stat]) => {
+      const avgSecondsPerBill = round2(stat.totalSeconds / Math.max(1, stat.billCount));
+      const totalMins = Math.max(1 / 60, stat.totalSeconds / 60);
+      const itemsPerMin = round2(stat.totalItems / totalMins);
+      return {
+        operatorName,
+        billCount: stat.billCount,
+        totalItems: stat.totalItems,
+        totalSales: stat.totalSales,
+        avgSecondsPerBill,
+        itemsPerMin,
+      };
+    })
+    .sort((a, b) => a.avgSecondsPerBill - b.avgSecondsPerBill);
+}
+
+export function validateFamilyWalletPayment(params: {
+  customer?: Pick<Ledger, 'name' | 'walletBalance' | 'membershipTier'>;
+  walletAmount: number;
+}): { allowed: boolean; availableBalance: number; error?: string } {
+  const walletAmount = round2(Math.max(0, params.walletAmount));
+  if (walletAmount <= 0) {
+    return {
+      allowed: true,
+      availableBalance: round2(params.customer?.walletBalance || 0),
+    };
+  }
+  if (!params.customer) {
+    return {
+      allowed: false,
+      availableBalance: 0,
+      error: 'Select a registered member account to pay using Family Prepaid Wallet.',
+    };
+  }
+  const availableBalance = round2(Math.max(0, params.customer.walletBalance || 0));
+  if (availableBalance <= 0) {
+    return {
+      allowed: false,
+      availableBalance: 0,
+      error: `${params.customer.name} has ₹0.00 wallet balance. Top up wallet from their customer ledger first.`,
+    };
+  }
+  if (walletAmount > availableBalance + 0.01) {
+    return {
+      allowed: false,
+      availableBalance,
+      error: `Wallet payment ₹${walletAmount.toFixed(2)} exceeds ${params.customer.name}'s available balance of ₹${availableBalance.toFixed(2)}.`,
+    };
+  }
+  return { allowed: true, availableBalance };
+}
+
+export interface WastageSummaryMetrics {
+  totalLossAllTime: number;
+  todayLoss: number;
+  totalQtyWrittenOff: number;
+  wastagePercentOfSales: number;
+  topReason: WastageReason | 'NONE';
+  byReason: Array<{ reason: WastageReason; totalLoss: number; count: number }>;
+}
+
+export function computeWastageSummary(params: {
+  wastageLogs: WastageLogRecord[];
+  invoices: InvoiceRecord[];
+  asOfDate: string;
+}): WastageSummaryMetrics {
+  const { wastageLogs, invoices, asOfDate } = params;
+  const totalLossAllTime = round2(wastageLogs.reduce((s, w) => s + w.totalLoss, 0));
+  const todayLoss = round2(
+    wastageLogs
+      .filter((w) => w.wastageDate === asOfDate)
+      .reduce((s, w) => s + w.totalLoss, 0)
+  );
+  const totalQtyWrittenOff = round3(wastageLogs.reduce((s, w) => s + w.qty, 0));
+
+  const grossSales = round2(
+    invoices
+      .filter((i) => i.docType === 'POS_BILL' || i.docType === 'GST_INVOICE')
+      .reduce((s, i) => s + i.grandTotal, 0)
+  );
+  const wastagePercentOfSales =
+    grossSales > 0 ? round2((totalLossAllTime / grossSales) * 100) : 0;
+
+  const reasonMap = new Map<WastageReason, { totalLoss: number; count: number }>();
+  for (const w of wastageLogs) {
+    const prev = reasonMap.get(w.reason) || { totalLoss: 0, count: 0 };
+    prev.totalLoss = round2(prev.totalLoss + w.totalLoss);
+    prev.count += 1;
+    reasonMap.set(w.reason, prev);
+  }
+
+  const byReason = Array.from(reasonMap.entries())
+    .map(([reason, data]) => ({ reason, ...data }))
+    .sort((a, b) => b.totalLoss - a.totalLoss);
+
+  return {
+    totalLossAllTime,
+    todayLoss,
+    totalQtyWrittenOff,
+    wastagePercentOfSales,
+    topReason: byReason[0]?.reason ?? 'NONE',
+    byReason,
+  };
+}
+
+export function buildWhatsAppDeliveryUpdateText(params: {
+  storeName: string;
+  orderNo: string;
+  customerName: string;
+  stage: 'RECEIVED' | 'PACKING' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
+  riderName: string;
+  deliverySlot: string;
+  grandTotal: number;
+  paymentType: 'COD_CASH' | 'COD_UPI' | 'PREPAID';
+  upiVpa: string;
+}): string {
+  const stageLabelMap: Record<typeof params.stage, string> = {
+    RECEIVED: 'Order Confirmed',
+    PACKING: 'Being Freshly Packed',
+    OUT_FOR_DELIVERY: 'Out for Delivery',
+    DELIVERED: 'Delivered',
+  };
+  const paymentNote =
+    params.paymentType === 'PREPAID'
+      ? 'Payment: Prepaid (No Cash Due)'
+      : `Amount Due on Delivery: ₹${params.grandTotal.toFixed(0)} (${params.paymentType === 'COD_UPI' ? `UPI: ${params.upiVpa}` : 'Cash / UPI'})`;
+
+  return [
+    `*${params.storeName} — Home Delivery Update*`,
+    `Order: ${params.orderNo}`,
+    `Customer: ${params.customerName}`,
+    `Status: *${stageLabelMap[params.stage]}*`,
+    `Slot: ${params.deliverySlot} | Rider: ${params.riderName}`,
+    paymentNote,
+    `Thank you for shopping fresh with us!`,
+  ].join('\n');
+}
+
+export function buildWhatsAppCatalogBroadcastText(params: {
+  storeName: string;
+  branchName: string;
+  phone: string;
+  items: Pick<InventoryItem, 'name' | 'mrp' | 'saleRate' | 'uqc'>[];
+}): string {
+  const topLines = params.items.slice(0, 8).map((it) => {
+    const save = Math.max(0, round2(it.mrp - it.saleRate));
+    return `• ${it.name}: *₹${it.saleRate}/${it.uqc}*${save > 0 ? ` (MRP ₹${it.mrp}, Save ₹${save})` : ''}`;
+  });
+  return [
+    `*${params.storeName} — Today's Fresh Deals*`,
+    params.branchName ? `Branch: ${params.branchName}` : '',
+    '',
+    ...topLines,
+    '',
+    `Reply with your grocery list for 60-min home delivery!`,
+    params.phone ? `Order Helpline: ${params.phone}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+

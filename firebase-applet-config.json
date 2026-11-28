@@ -3,6 +3,7 @@
   "appId": "1:639664119478:web:6611443ece7d1ee28c9017",
   "apiKey": "AIzaSyB6pMJ_aC4hBjXg--17TsmGHrIT-aOhuAM",
   "authDomain": "temporal-pathway-5g02f.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-margbooks-b9b57030-17b9-4b44-83df-0c38d8ca3594",
   "storageBucket": "temporal-pathway-5g02f.firebasestorage.app",
   "messagingSenderId": "639664119478",
   "measurementId": "",

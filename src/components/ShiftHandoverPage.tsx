@@ -4,13 +4,19 @@ import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
+  Banknote,
   CheckCircle2,
   ClipboardCheck,
+  Gauge,
+  Plus,
   ScanBarcode,
   Shield,
   Users,
 } from 'lucide-react';
-import { calculateShiftVariance } from '../lib/erp-engine';
+import {
+  calculateShiftVariance,
+  computeCashierSpeedLeaderboard,
+} from '../lib/erp-engine';
 import type { UserAccessRole } from '../types/erp';
 import { useMargBooks } from './MargBooksContext';
 
@@ -45,8 +51,13 @@ export function ShiftHandoverPage() {
     [workspace.posCounters, selectedCounterId]
   );
 
+  const enabledAddons = workspace.controlRoom.enabledAddons;
+  const analyticsEnabled = enabledAddons?.petty_cash_analytics !== false;
+
   const expectedDefaultCash = selectedCounter
-    ? selectedCounter.openingCash + selectedCounter.cashSales
+    ? selectedCounter.openingCash +
+      selectedCounter.cashSales -
+      (selectedCounter.pettyCashPayouts || 0)
     : 0;
 
   const [countedCashInput, setCountedCashInput] = useState<string>(
@@ -60,11 +71,22 @@ export function ShiftHandoverPage() {
   const [resetSales, setResetSales] = useState<boolean>(false);
   const [notes, setNotes] = useState<string>('');
 
+  // Daily Petty Cash Form State
+  const [pettyCounter, setPettyCounter] = useState<string>(
+    workspace.posCounters[0]?.counterCode || 'LANE-01'
+  );
+  const [pettyCategory, setPettyCategory] = useState<string>('Store Supplies');
+  const [pettyPaidTo, setPettyPaidTo] = useState<string>('');
+  const [pettyAmount, setPettyAmount] = useState<string>('');
+  const [pettyNarration, setPettyNarration] = useState<string>('');
+
   const handleCounterChange = (nextId: number) => {
     setSelectedCounterId(nextId);
     const c = workspace.posCounters.find((pc) => pc.id === nextId);
     if (c) {
-      setCountedCashInput(String(c.openingCash + c.cashSales));
+      setCountedCashInput(
+        String(c.openingCash + c.cashSales - (c.pettyCashPayouts || 0))
+      );
     }
   };
 
@@ -77,6 +99,7 @@ export function ShiftHandoverPage() {
         cardSales: 0,
         walletSales: 0,
         pdcSales: 0,
+        pettyCashPayouts: 0,
         countedCash: 0,
       });
     }
@@ -87,6 +110,7 @@ export function ShiftHandoverPage() {
       cardSales: selectedCounter.cardSales,
       walletSales: selectedCounter.walletSales,
       pdcSales: selectedCounter.pdcSales,
+      pettyCashPayouts: selectedCounter.pettyCashPayouts || 0,
       countedCash: Number(countedCashInput || 0),
     });
   }, [selectedCounter, countedCashInput]);
@@ -100,10 +124,50 @@ export function ShiftHandoverPage() {
         cardSales: acc.cardSales + pc.cardSales,
         walletSales: acc.walletSales + pc.walletSales,
         pdcSales: acc.pdcSales + pc.pdcSales,
+        pettyCashPayouts: acc.pettyCashPayouts + (pc.pettyCashPayouts || 0),
       }),
-      { openingCash: 0, cashSales: 0, upiSales: 0, cardSales: 0, walletSales: 0, pdcSales: 0 }
+      {
+        openingCash: 0,
+        cashSales: 0,
+        upiSales: 0,
+        cardSales: 0,
+        walletSales: 0,
+        pdcSales: 0,
+        pettyCashPayouts: 0,
+      }
     );
   }, [workspace.posCounters]);
+
+  const cashierLeaderboard = useMemo(
+    () => computeCashierSpeedLeaderboard(workspace.invoices),
+    [workspace.invoices]
+  );
+
+  const handleCreatePettyCash = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = Number(pettyAmount);
+    if (!Number.isFinite(amt) || amt <= 0 || !pettyPaidTo.trim()) return;
+    const ok = await dispatchAction(
+      'CREATE_PETTY_CASH',
+      {
+        expenseDate: '2026-11-26',
+        counterCode: pettyCounter,
+        category: pettyCategory,
+        paidTo: pettyPaidTo.trim(),
+        amount: amt,
+        narration: pettyNarration.trim() || `${pettyCategory} paid to ${pettyPaidTo.trim()}`,
+        operatorName:
+          workspace.posCounters.find((c) => c.counterCode === pettyCounter)?.operatorName ||
+          'Store Admin',
+      },
+      `Petty cash payout of ${formatInr(amt)} recorded from ${pettyCounter}.`
+    );
+    if (ok) {
+      setPettyPaidTo('');
+      setPettyAmount('');
+      setPettyNarration('');
+    }
+  };
 
   const handleSubmitHandover = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,11 +231,18 @@ export function ShiftHandoverPage() {
         <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
           <div className="text-xs text-slate-500 dark:text-slate-400">Expected Drawer Cash (All Counters)</div>
           <div className="mt-1 font-mono text-xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-            {formatInr(totalsAcrossCounters.openingCash + totalsAcrossCounters.cashSales)}
+            {formatInr(
+              totalsAcrossCounters.openingCash +
+                totalsAcrossCounters.cashSales -
+                totalsAcrossCounters.pettyCashPayouts
+            )}
           </div>
           <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Float {formatInr(totalsAcrossCounters.openingCash)} + Cash{' '}
             {formatInr(totalsAcrossCounters.cashSales)}
+            {totalsAcrossCounters.pettyCashPayouts > 0
+              ? ` − Petty ${formatInr(totalsAcrossCounters.pettyCashPayouts)}`
+              : ''}
           </div>
         </div>
 
@@ -455,10 +526,15 @@ export function ShiftHandoverPage() {
                   </div>
                   <div className="text-right font-mono tabular-nums shrink-0">
                     <div className="font-semibold text-slate-900 dark:text-slate-100">
-                      {formatInr(pc.openingCash + pc.cashSales)}
+                      {formatInr(
+                        pc.openingCash + pc.cashSales - (pc.pettyCashPayouts || 0)
+                      )}
                     </div>
-                    <div className={pc.status === 'OPEN' ? 'text-emerald-700' : 'text-slate-500 dark:text-slate-400'}>
+                    <div className={pc.status === 'OPEN' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}>
                       {pc.status}
+                      {(pc.pettyCashPayouts || 0) > 0
+                        ? ` · Petty -₹${pc.pettyCashPayouts}`
+                        : ''}
                     </div>
                   </div>
                 </div>
@@ -467,6 +543,225 @@ export function ShiftHandoverPage() {
           </div>
         </div>
       </div>
+
+      {/* Add-On: Cashier Speed Analytics & Daily Petty Cash Register */}
+      {analyticsEnabled && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Daily Petty Cash Payout Register */}
+          <section className="lg:col-span-7 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Banknote className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+                <div>
+                  <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
+                    Daily Petty Cash Payout Register
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Small drawer payouts auto-deduct from expected shift cash &amp; post an Expense voucher.
+                  </p>
+                </div>
+              </div>
+              <span className="font-mono text-xs font-semibold text-amber-700 dark:text-amber-400 tabular-nums">
+                Total: {formatInr(totalsAcrossCounters.pettyCashPayouts)}
+              </span>
+            </div>
+
+            <form
+              onSubmit={(e) => void handleCreatePettyCash(e)}
+              className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 grid grid-cols-1 sm:grid-cols-12 gap-2.5"
+            >
+              <div className="sm:col-span-3">
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Lane
+                </label>
+                <select
+                  value={pettyCounter}
+                  onChange={(e) => setPettyCounter(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  {workspace.posCounters.map((c) => (
+                    <option key={c.id} value={c.counterCode}>
+                      {c.counterCode}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Category
+                </label>
+                <select
+                  value={pettyCategory}
+                  onChange={(e) => setPettyCategory(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  <option value="Store Supplies">Store Supplies</option>
+                  <option value="Tea & Refreshments">Tea &amp; Refreshments</option>
+                  <option value="Delivery Fuel">Delivery Fuel</option>
+                  <option value="Cleaning & Housekeeping">Cleaning &amp; Housekeeping</option>
+                  <option value="Local Transport">Local Transport</option>
+                </select>
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Paid To
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={pettyPaidTo}
+                  onChange={(e) => setPettyPaidTo(e.target.value)}
+                  placeholder="e.g. Ramesh Tea Stall"
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Amount (₹)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  value={pettyAmount}
+                  onChange={(e) => setPettyAmount(e.target.value)}
+                  placeholder="250"
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div className="sm:col-span-8">
+                <input
+                  type="text"
+                  value={pettyNarration}
+                  onChange={(e) => setPettyNarration(e.target.value)}
+                  placeholder="Short note (e.g. Thermal paper rolls + carry bags)"
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div className="sm:col-span-4">
+                <button
+                  type="submit"
+                  disabled={syncing}
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Log Payout</span>
+                </button>
+              </div>
+            </form>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Voucher / Lane</th>
+                    <th className="px-3 py-2.5 font-medium">Payee &amp; Category</th>
+                    <th className="px-3 py-2.5 font-medium">Note</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {workspace.pettyCashExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                        No petty cash payouts recorded yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    workspace.pettyCashExpenses.map((pc) => (
+                      <tr key={pc.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <td className="px-4 py-2.5">
+                          <div className="font-mono font-semibold text-slate-900 dark:text-slate-100">
+                            {pc.voucherNo}
+                          </div>
+                          <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                            {pc.counterCode} · {pc.expenseDate}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="font-medium text-slate-900 dark:text-slate-100">
+                            {pc.paidTo}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {pc.category}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-600 dark:text-slate-400 max-w-[180px] truncate">
+                          {pc.narration}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-red-700 dark:text-red-400 tabular-nums">
+                          -{formatInr(pc.amount)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Cashier Speed Analytics Leaderboard */}
+          <section className="lg:col-span-5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Gauge className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+                <div>
+                  <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
+                    Cashier Speed Analytics
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Live checkout throughput ranked by average seconds per bill
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {cashierLeaderboard.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                  Complete bills in Retail POS to populate cashier speed metrics.
+                </div>
+              ) : (
+                cashierLeaderboard.map((row, idx) => (
+                  <div
+                    key={row.operatorName}
+                    className="px-5 py-3.5 flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md font-mono text-xs font-bold ${
+                          idx === 0
+                            ? 'bg-emerald-700 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                          {row.operatorName}
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+                          {row.billCount} bills · {row.totalItems} items · {formatInr(row.totalSales)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right font-mono tabular-nums shrink-0">
+                      <div className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                        {row.avgSecondsPerBill}s / bill
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {row.itemsPerMin} items/min
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* Shift Handover Audit History */}
       <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
@@ -493,7 +788,7 @@ export function ShiftHandoverPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {workspace.shiftHandovers.map((sh) => (
-                <tr key={sh.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/40">
+                <tr key={sh.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="px-5 py-3">
                     <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100">
                       {sh.counterCode}
@@ -515,10 +810,10 @@ export function ShiftHandoverPage() {
                   <td
                     className={`px-4 py-3 text-right font-mono font-semibold tabular-nums ${
                       Math.abs(sh.cashVariance) < 0.01
-                        ? 'text-emerald-700'
+                        ? 'text-emerald-700 dark:text-emerald-400'
                         : sh.cashVariance > 0
-                          ? 'text-amber-700'
-                          : 'text-red-700'
+                          ? 'text-amber-700 dark:text-amber-400'
+                          : 'text-red-700 dark:text-red-400'
                     }`}
                   >
                     {sh.cashVariance >= 0 ? '+' : ''}

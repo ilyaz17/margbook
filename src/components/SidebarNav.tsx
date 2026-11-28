@@ -13,6 +13,7 @@ import {
   Landmark,
   LayoutDashboard,
   Plus,
+  Puzzle,
   ReceiptIndianRupee,
   ScanBarcode,
   Search,
@@ -41,6 +42,7 @@ const ICON_MAP: Record<ModuleId, React.ComponentType<{ className?: string }>> = 
   crm: Store,
   reports: BarChart3,
   'company-setup': Building2,
+  addons: Puzzle,
   'control-room': Settings2,
   search: Search,
 };

@@ -5,28 +5,39 @@ import {
   companies,
   controlRoomSettings,
   crmRecords,
+  deliveryOrders,
   invoices,
   itemBatches,
   items,
   ledgers,
+  pettyCashExpenses,
   posCounters,
   promoCoupons,
   purchases,
   schemes,
   shiftHandovers,
   stockMovements,
+  supplierDamageClaims,
   users,
   vouchers,
+  wastageLogs,
 } from './schema.ts';
 import { createInitialWorkspaceData } from '../lib/seed-data.ts';
-import type {
-  BomComponent,
-  ControlRoomConfig,
-  InvoiceLineItem,
-  PaymentSplit,
-  PurchaseLineItem,
-  UserAccessRole,
-  WorkspaceData,
+import {
+  DEFAULT_ENABLED_ADDONS,
+  type BomComponent,
+  type ControlRoomConfig,
+  type DeliveryOrderRecord,
+  type EnabledAddonsMap,
+  type InvoiceLineItem,
+  type MembershipTier,
+  type PaymentSplit,
+  type PurchaseLineItem,
+  type SupplierDamageClaimRecord,
+  type UserAccessRole,
+  type WastageDisposalMethod,
+  type WastageReason,
+  type WorkspaceData,
 } from '../types/erp.ts';
 
 function safeJsonParse<T>(raw: string, fallback: T): T {
@@ -88,6 +99,9 @@ export async function ensureCompanySeeded(ownerUid: string): Promise<number> {
           balanceType: l.balanceType,
           creditLimit: l.creditLimit,
           loyaltyPoints: l.loyaltyPoints,
+          membershipTier: l.membershipTier || 'NONE',
+          membershipCardNo: l.membershipCardNo || '',
+          walletBalance: l.walletBalance || 0,
         }))
       )
       .returning({ id: ledgers.id, name: ledgers.name });
@@ -217,6 +231,9 @@ export async function ensureCompanySeeded(ownerUid: string): Promise<number> {
         irn: inv.irn,
         ewayBillNo: inv.ewayBillNo,
         status: inv.status,
+        operatorName: inv.operatorName || 'Kavitha Rajan',
+        checkoutSeconds: inv.checkoutSeconds || 24,
+        itemCount: inv.itemCount || Math.max(1, inv.items.length),
         createdByUid: ownerUid,
       }))
     );
@@ -298,6 +315,7 @@ export async function ensureCompanySeeded(ownerUid: string): Promise<number> {
         cardSales: pc.cardSales,
         walletSales: pc.walletSales,
         pdcSales: pc.pdcSales,
+        pettyCashPayouts: pc.pettyCashPayouts || 0,
         status: pc.status,
         lastClosedAt: pc.lastClosedAt,
       }))
@@ -328,6 +346,94 @@ export async function ensureCompanySeeded(ownerUid: string): Promise<number> {
       );
     }
 
+    if (seed.deliveryOrders.length > 0) {
+      await db.insert(deliveryOrders).values(
+        seed.deliveryOrders.map((d) => ({
+          companyId: primaryCompanyId,
+          orderNo: d.orderNo,
+          invoiceId: null,
+          invoiceNo: d.invoiceNo,
+          customerName: d.customerName,
+          customerPhone: d.customerPhone,
+          deliveryAddress: d.deliveryAddress,
+          deliverySlot: d.deliverySlot,
+          riderName: d.riderName,
+          stage: d.stage,
+          paymentType: d.paymentType,
+          codCollected: d.codCollected,
+          grandTotal: d.grandTotal,
+          itemsSummary: d.itemsSummary,
+          notes: d.notes,
+          orderDate: d.orderDate,
+        }))
+      );
+    }
+
+    if (seed.pettyCashExpenses.length > 0) {
+      await db.insert(pettyCashExpenses).values(
+        seed.pettyCashExpenses.map((p) => ({
+          companyId: primaryCompanyId,
+          expenseDate: p.expenseDate,
+          counterCode: p.counterCode,
+          category: p.category,
+          paidTo: p.paidTo,
+          amount: p.amount,
+          narration: p.narration,
+          voucherNo: p.voucherNo,
+          operatorName: p.operatorName,
+        }))
+      );
+    }
+
+    if (seed.supplierDamageClaims.length > 0) {
+      await db.insert(supplierDamageClaims).values(
+        seed.supplierDamageClaims.map((c) => ({
+          companyId: primaryCompanyId,
+          claimNo: c.claimNo,
+          claimDate: c.claimDate,
+          ledgerId: ledgerNameToId.get(c.supplierName) ?? null,
+          supplierName: c.supplierName,
+          itemId: c.itemId ? oldItemIdToNewId.get(c.itemId) ?? null : null,
+          itemName: c.itemName,
+          sku: c.sku,
+          batchNo: c.batchNo,
+          expiryDate: c.expiryDate,
+          qty: c.qty,
+          unitCost: c.unitCost,
+          claimAmount: c.claimAmount,
+          reason: c.reason,
+          status: c.status,
+          debitNoteNo: c.debitNoteNo,
+          notes: c.notes,
+        }))
+      );
+    }
+
+    if (seed.wastageLogs.length > 0) {
+      await db.insert(wastageLogs).values(
+        seed.wastageLogs.map((w) => ({
+          companyId: primaryCompanyId,
+          wastageNo: w.wastageNo,
+          wastageDate: w.wastageDate,
+          itemId: w.itemId ? oldItemIdToNewId.get(w.itemId) ?? null : null,
+          itemName: w.itemName,
+          sku: w.sku,
+          category: w.category,
+          batchId: null,
+          batchNo: w.batchNo,
+          godownName: w.godownName,
+          uqc: w.uqc,
+          qty: w.qty,
+          unitCost: w.unitCost,
+          totalLoss: w.totalLoss,
+          reason: w.reason,
+          disposalMethod: w.disposalMethod,
+          operatorName: w.operatorName,
+          notes: w.notes,
+        }))
+      );
+    }
+
     for (const insertedComp of insertedCompanies) {
       await db
         .insert(controlRoomSettings)
@@ -349,6 +455,7 @@ export async function ensureCompanySeeded(ownerUid: string): Promise<number> {
           weightedBarcodePrefix: seed.controlRoom.weightedBarcodePrefix,
           lastBooksRebuildAt: seed.controlRoom.lastBooksRebuildAt,
           lastBackupAt: seed.controlRoom.lastBackupAt,
+          enabledAddons: JSON.stringify(seed.controlRoom.enabledAddons),
         })
         .onConflictDoNothing();
     }
@@ -399,6 +506,10 @@ export async function loadWorkspaceForUser(
       crmRows,
       counterRows,
       shiftRows,
+      deliveryRows,
+      pettyCashRows,
+      damageClaimRows,
+      wastageRows,
       controlRows,
       userRows,
     ] = await Promise.all([
@@ -441,6 +552,26 @@ export async function loadWorkspaceForUser(
         .orderBy(desc(shiftHandovers.id)),
       db
         .select()
+        .from(deliveryOrders)
+        .where(eq(deliveryOrders.companyId, companyId))
+        .orderBy(desc(deliveryOrders.id)),
+      db
+        .select()
+        .from(pettyCashExpenses)
+        .where(eq(pettyCashExpenses.companyId, companyId))
+        .orderBy(desc(pettyCashExpenses.id)),
+      db
+        .select()
+        .from(supplierDamageClaims)
+        .where(eq(supplierDamageClaims.companyId, companyId))
+        .orderBy(desc(supplierDamageClaims.id)),
+      db
+        .select()
+        .from(wastageLogs)
+        .where(eq(wastageLogs.companyId, companyId))
+        .orderBy(desc(wastageLogs.id)),
+      db
+        .select()
         .from(controlRoomSettings)
         .where(eq(controlRoomSettings.companyId, companyId)),
       db.select({ role: users.role }).from(users).where(eq(users.uid, ownerUid)),
@@ -448,7 +579,7 @@ export async function loadWorkspaceForUser(
 
     const fallbackSeed = createInitialWorkspaceData();
 
-    // Auto-seed default supermarket coupons for existing companies that don't have any yet
+    // Auto-seed default supermarket coupons and Phase 2 operational tables for existing companies
     let hydratedCoupons = couponRows;
     if (hydratedCoupons.length === 0 && fallbackSeed.promoCoupons.length > 0) {
       hydratedCoupons = await db
@@ -469,7 +600,115 @@ export async function loadWorkspaceForUser(
         .returning();
     }
 
+    let hydratedDeliveries = deliveryRows;
+    if (hydratedDeliveries.length === 0 && fallbackSeed.deliveryOrders.length > 0) {
+      hydratedDeliveries = await db
+        .insert(deliveryOrders)
+        .values(
+          fallbackSeed.deliveryOrders.map((d) => ({
+            companyId,
+            orderNo: d.orderNo,
+            invoiceId: null,
+            invoiceNo: d.invoiceNo,
+            customerName: d.customerName,
+            customerPhone: d.customerPhone,
+            deliveryAddress: d.deliveryAddress,
+            deliverySlot: d.deliverySlot,
+            riderName: d.riderName,
+            stage: d.stage,
+            paymentType: d.paymentType,
+            codCollected: d.codCollected,
+            grandTotal: d.grandTotal,
+            itemsSummary: d.itemsSummary,
+            notes: d.notes,
+            orderDate: d.orderDate,
+          }))
+        )
+        .returning();
+    }
+
+    let hydratedPettyCash = pettyCashRows;
+    if (hydratedPettyCash.length === 0 && fallbackSeed.pettyCashExpenses.length > 0) {
+      hydratedPettyCash = await db
+        .insert(pettyCashExpenses)
+        .values(
+          fallbackSeed.pettyCashExpenses.map((p) => ({
+            companyId,
+            expenseDate: p.expenseDate,
+            counterCode: p.counterCode,
+            category: p.category,
+            paidTo: p.paidTo,
+            amount: p.amount,
+            narration: p.narration,
+            voucherNo: p.voucherNo,
+            operatorName: p.operatorName,
+          }))
+        )
+        .returning();
+    }
+
+    let hydratedClaims = damageClaimRows;
+    if (hydratedClaims.length === 0 && fallbackSeed.supplierDamageClaims.length > 0) {
+      hydratedClaims = await db
+        .insert(supplierDamageClaims)
+        .values(
+          fallbackSeed.supplierDamageClaims.map((c) => ({
+            companyId,
+            claimNo: c.claimNo,
+            claimDate: c.claimDate,
+            ledgerId: ledgerRows.find((l) => l.name === c.supplierName)?.id ?? null,
+            supplierName: c.supplierName,
+            itemId: itemRows.find((it) => it.sku === c.sku)?.id ?? null,
+            itemName: c.itemName,
+            sku: c.sku,
+            batchNo: c.batchNo,
+            expiryDate: c.expiryDate,
+            qty: c.qty,
+            unitCost: c.unitCost,
+            claimAmount: c.claimAmount,
+            reason: c.reason,
+            status: c.status,
+            debitNoteNo: c.debitNoteNo,
+            notes: c.notes,
+          }))
+        )
+        .returning();
+    }
+
+    let hydratedWastage = wastageRows;
+    if (hydratedWastage.length === 0 && fallbackSeed.wastageLogs.length > 0) {
+      hydratedWastage = await db
+        .insert(wastageLogs)
+        .values(
+          fallbackSeed.wastageLogs.map((w) => ({
+            companyId,
+            wastageNo: w.wastageNo,
+            wastageDate: w.wastageDate,
+            itemId: itemRows.find((it) => it.sku === w.sku)?.id ?? null,
+            itemName: w.itemName,
+            sku: w.sku,
+            category: w.category,
+            batchId: null,
+            batchNo: w.batchNo,
+            godownName: w.godownName,
+            uqc: w.uqc,
+            qty: w.qty,
+            unitCost: w.unitCost,
+            totalLoss: w.totalLoss,
+            reason: w.reason,
+            disposalMethod: w.disposalMethod,
+            operatorName: w.operatorName,
+            notes: w.notes,
+          }))
+        )
+        .returning();
+    }
+
     const cr = controlRows[0];
+    const parsedAddons: EnabledAddonsMap = {
+      ...DEFAULT_ENABLED_ADDONS,
+      ...safeJsonParse<Partial<EnabledAddonsMap>>(cr?.enabledAddons || '{}', {}),
+    };
     const controlRoom: ControlRoomConfig = cr
       ? {
           id: cr.id,
@@ -490,6 +729,7 @@ export async function loadWorkspaceForUser(
           weightedBarcodePrefix: cr.weightedBarcodePrefix || '21',
           lastBooksRebuildAt: cr.lastBooksRebuildAt,
           lastBackupAt: cr.lastBackupAt,
+          enabledAddons: parsedAddons,
         }
       : { ...fallbackSeed.controlRoom, companyId };
 
@@ -524,6 +764,9 @@ export async function loadWorkspaceForUser(
         balanceType: (l.balanceType as 'Dr' | 'Cr') || 'Dr',
         creditLimit: l.creditLimit,
         loyaltyPoints: l.loyaltyPoints,
+        membershipTier: (l.membershipTier as MembershipTier) || 'NONE',
+        membershipCardNo: l.membershipCardNo || '',
+        walletBalance: l.walletBalance || 0,
       })),
       items: itemRows.map((it) => ({
         id: it.id,
@@ -619,6 +862,9 @@ export async function loadWorkspaceForUser(
         irn: inv.irn,
         ewayBillNo: inv.ewayBillNo,
         status: inv.status as WorkspaceData['invoices'][number]['status'],
+        operatorName: inv.operatorName || 'Kavitha Rajan',
+        checkoutSeconds: inv.checkoutSeconds || 24,
+        itemCount: inv.itemCount || 1,
       })),
       purchases: purchaseRows.map((p) => ({
         id: p.id,
@@ -690,6 +936,7 @@ export async function loadWorkspaceForUser(
         walletSales: pc.walletSales,
         pdcSales: pc.pdcSales,
         creditSales: pc.creditSales || 0,
+        pettyCashPayouts: pc.pettyCashPayouts || 0,
         status: (pc.status as 'OPEN' | 'CLOSED') || 'OPEN',
         lastClosedAt: pc.lastClosedAt,
       })),
@@ -713,6 +960,78 @@ export async function loadWorkspaceForUser(
         cashVariance: sh.cashVariance,
         notes: sh.notes,
         handedOverAt: sh.handedOverAt,
+      })),
+      deliveryOrders: hydratedDeliveries.map((d) => ({
+        id: d.id,
+        companyId: d.companyId,
+        orderNo: d.orderNo,
+        invoiceId: d.invoiceId,
+        invoiceNo: d.invoiceNo,
+        customerName: d.customerName,
+        customerPhone: d.customerPhone,
+        deliveryAddress: d.deliveryAddress,
+        deliverySlot: d.deliverySlot,
+        riderName: d.riderName,
+        stage: (d.stage as DeliveryOrderRecord['stage']) || 'RECEIVED',
+        paymentType: (d.paymentType as DeliveryOrderRecord['paymentType']) || 'COD_CASH',
+        codCollected: d.codCollected,
+        grandTotal: d.grandTotal,
+        itemsSummary: d.itemsSummary,
+        notes: d.notes,
+        orderDate: d.orderDate,
+      })),
+      pettyCashExpenses: hydratedPettyCash.map((p) => ({
+        id: p.id,
+        companyId: p.companyId,
+        expenseDate: p.expenseDate,
+        counterCode: p.counterCode,
+        category: p.category,
+        paidTo: p.paidTo,
+        amount: p.amount,
+        narration: p.narration,
+        voucherNo: p.voucherNo,
+        operatorName: p.operatorName,
+      })),
+      supplierDamageClaims: hydratedClaims.map((c) => ({
+        id: c.id,
+        companyId: c.companyId,
+        claimNo: c.claimNo,
+        claimDate: c.claimDate,
+        ledgerId: c.ledgerId,
+        supplierName: c.supplierName,
+        itemId: c.itemId,
+        itemName: c.itemName,
+        sku: c.sku,
+        batchNo: c.batchNo,
+        expiryDate: c.expiryDate,
+        qty: c.qty,
+        unitCost: c.unitCost,
+        claimAmount: c.claimAmount,
+        reason: (c.reason as SupplierDamageClaimRecord['reason']) || 'Transit Damage',
+        status: (c.status as SupplierDamageClaimRecord['status']) || 'LOGGED',
+        debitNoteNo: c.debitNoteNo,
+        notes: c.notes,
+      })),
+      wastageLogs: hydratedWastage.map((w) => ({
+        id: w.id,
+        companyId: w.companyId,
+        wastageNo: w.wastageNo,
+        wastageDate: w.wastageDate,
+        itemId: w.itemId,
+        itemName: w.itemName,
+        sku: w.sku,
+        category: w.category,
+        batchId: w.batchId,
+        batchNo: w.batchNo,
+        godownName: w.godownName,
+        uqc: w.uqc,
+        qty: w.qty,
+        unitCost: w.unitCost,
+        totalLoss: w.totalLoss,
+        reason: (w.reason as WastageReason) || 'PRODUCE_SPOILAGE',
+        disposalMethod: (w.disposalMethod as WastageDisposalMethod) || 'COMPOST_DISCARD',
+        operatorName: w.operatorName,
+        notes: w.notes,
       })),
       controlRoom,
       operators: fallbackSeed.operators,
@@ -760,6 +1079,10 @@ export async function resetCompanyToSupermarket(
     await db.delete(crmRecords).where(eq(crmRecords.companyId, companyId));
     await db.delete(posCounters).where(eq(posCounters.companyId, companyId));
     await db.delete(shiftHandovers).where(eq(shiftHandovers.companyId, companyId));
+    await db.delete(deliveryOrders).where(eq(deliveryOrders.companyId, companyId));
+    await db.delete(pettyCashExpenses).where(eq(pettyCashExpenses.companyId, companyId));
+    await db.delete(supplierDamageClaims).where(eq(supplierDamageClaims.companyId, companyId));
+    await db.delete(wastageLogs).where(eq(wastageLogs.companyId, companyId));
 
     const insertedLedgers = await db
       .insert(ledgers)
@@ -778,6 +1101,9 @@ export async function resetCompanyToSupermarket(
           balanceType: l.balanceType,
           creditLimit: l.creditLimit,
           loyaltyPoints: l.loyaltyPoints,
+          membershipTier: l.membershipTier || 'NONE',
+          membershipCardNo: l.membershipCardNo || '',
+          walletBalance: l.walletBalance || 0,
         }))
       )
       .returning({ id: ledgers.id, name: ledgers.name });
@@ -986,6 +1312,7 @@ export async function resetCompanyToSupermarket(
         cardSales: pc.cardSales,
         walletSales: pc.walletSales,
         pdcSales: pc.pdcSales,
+        pettyCashPayouts: pc.pettyCashPayouts || 0,
         status: pc.status,
         lastClosedAt: pc.lastClosedAt,
       }))
@@ -1016,6 +1343,94 @@ export async function resetCompanyToSupermarket(
       );
     }
 
+    if (seed.deliveryOrders.length > 0) {
+      await db.insert(deliveryOrders).values(
+        seed.deliveryOrders.map((d) => ({
+          companyId,
+          orderNo: d.orderNo,
+          invoiceId: null,
+          invoiceNo: d.invoiceNo,
+          customerName: d.customerName,
+          customerPhone: d.customerPhone,
+          deliveryAddress: d.deliveryAddress,
+          deliverySlot: d.deliverySlot,
+          riderName: d.riderName,
+          stage: d.stage,
+          paymentType: d.paymentType,
+          codCollected: d.codCollected,
+          grandTotal: d.grandTotal,
+          itemsSummary: d.itemsSummary,
+          notes: d.notes,
+          orderDate: d.orderDate,
+        }))
+      );
+    }
+
+    if (seed.pettyCashExpenses.length > 0) {
+      await db.insert(pettyCashExpenses).values(
+        seed.pettyCashExpenses.map((p) => ({
+          companyId,
+          expenseDate: p.expenseDate,
+          counterCode: p.counterCode,
+          category: p.category,
+          paidTo: p.paidTo,
+          amount: p.amount,
+          narration: p.narration,
+          voucherNo: p.voucherNo,
+          operatorName: p.operatorName,
+        }))
+      );
+    }
+
+    if (seed.supplierDamageClaims.length > 0) {
+      await db.insert(supplierDamageClaims).values(
+        seed.supplierDamageClaims.map((c) => ({
+          companyId,
+          claimNo: c.claimNo,
+          claimDate: c.claimDate,
+          ledgerId: ledgerNameToId.get(c.supplierName) ?? null,
+          supplierName: c.supplierName,
+          itemId: c.itemId ? oldItemIdToNewId.get(c.itemId) ?? null : null,
+          itemName: c.itemName,
+          sku: c.sku,
+          batchNo: c.batchNo,
+          expiryDate: c.expiryDate,
+          qty: c.qty,
+          unitCost: c.unitCost,
+          claimAmount: c.claimAmount,
+          reason: c.reason,
+          status: c.status,
+          debitNoteNo: c.debitNoteNo,
+          notes: c.notes,
+        }))
+      );
+    }
+
+    if (seed.wastageLogs.length > 0) {
+      await db.insert(wastageLogs).values(
+        seed.wastageLogs.map((w) => ({
+          companyId,
+          wastageNo: w.wastageNo,
+          wastageDate: w.wastageDate,
+          itemId: w.itemId ? oldItemIdToNewId.get(w.itemId) ?? null : null,
+          itemName: w.itemName,
+          sku: w.sku,
+          category: w.category,
+          batchId: null,
+          batchNo: w.batchNo,
+          godownName: w.godownName,
+          uqc: w.uqc,
+          qty: w.qty,
+          unitCost: w.unitCost,
+          totalLoss: w.totalLoss,
+          reason: w.reason,
+          disposalMethod: w.disposalMethod,
+          operatorName: w.operatorName,
+          notes: w.notes,
+        }))
+      );
+    }
+
     await db
       .update(controlRoomSettings)
       .set({
@@ -1024,6 +1439,7 @@ export async function resetCompanyToSupermarket(
         invoiceTerms: seed.controlRoom.invoiceTerms,
         upiVpa: seed.controlRoom.upiVpa,
         weightedBarcodePrefix: seed.controlRoom.weightedBarcodePrefix,
+        enabledAddons: JSON.stringify(seed.controlRoom.enabledAddons),
       })
       .where(eq(controlRoomSettings.companyId, companyId));
   } catch (error) {

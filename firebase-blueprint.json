@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Server-managed administrator role registry document",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of the administrator" },
+        "email": { "type": "string", "format": "email", "description": "Verified administrator email address" },
+        "grantedAt": { "type": "string", "format": "date-time", "description": "Timestamp when admin role was provisioned" }
+      },
+      "required": ["uid", "email", "grantedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private authenticated operator profile isolated per user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID matching document ID" },
+        "displayName": { "type": "string", "description": "Operator display name" },
+        "role": { "type": "string", "enum": ["store_operator", "admin"], "description": "Access role; non-admins can only initialize as store_operator" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role", "createdAt", "updatedAt"]
+    },
+    "StoreRealtimeHub": {
+      "title": "StoreRealtimeHub",
+      "description": "Master Gate parent document for a supermarket store company's real-time Firestore subcollections",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "Firebase Auth UID of the store owner" },
+        "companyId": { "type": "number", "description": "Numeric ERP company ID" },
+        "storeName": { "type": "string", "description": "Supermarket store display name" },
+        "enabledAddonsJson": { "type": "string", "description": "Serialized JSON toggle flags for the 7 supermarket add-on modules" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "companyId", "storeName", "enabledAddonsJson", "createdAt", "updatedAt"]
+    },
+    "LivePoleDisplay": {
+      "title": "LivePoleDisplay",
+      "description": "Real-time POS cart and dynamic UPI QR state mirrored to a separate customer-facing tablet",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "Owner UID matching parent store" },
+        "storeId": { "type": "string", "description": "Parent store document ID" },
+        "counterCode": { "type": "string", "description": "POS lane code such as LANE-01" },
+        "storeName": { "type": "string" },
+        "branchName": { "type": "string" },
+        "upiVpa": { "type": "string" },
+        "customerName": { "type": "string" },
+        "status": { "type": "string", "enum": ["IDLE", "SCANNING", "PAID"] },
+        "subtotal": { "type": "number" },
+        "totalTax": { "type": "number" },
+        "couponDiscount": { "type": "number" },
+        "loyaltyDiscount": { "type": "number" },
+        "totalMrpSavings": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "upiAmount": { "type": "number" },
+        "couponCode": { "type": "string" },
+        "lastInvoiceNo": { "type": "string" },
+        "linesJson": { "type": "string", "description": "Bounded JSON array of active basket lines for pole display" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "storeId",
+        "counterCode",
+        "storeName",
+        "branchName",
+        "upiVpa",
+        "customerName",
+        "status",
+        "subtotal",
+        "totalTax",
+        "couponDiscount",
+        "loyaltyDiscount",
+        "totalMrpSavings",
+        "grandTotal",
+        "upiAmount",
+        "couponCode",
+        "lastInvoiceNo",
+        "linesJson",
+        "updatedAt"
+      ]
+    },
+    "StoreOpsEvent": {
+      "title": "StoreOpsEvent",
+      "description": "Immutable live operational event for Delivery Dispatch, Wastage Alert, or Add-On Module changes",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "Owner UID matching parent store" },
+        "storeId": { "type": "string", "description": "Parent store document ID" },
+        "eventType": { "type": "string", "enum": ["DELIVERY_DISPATCH", "WASTAGE_ALERT", "ADDON_TOGGLE", "POS_CHECKOUT"] },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "severity": { "type": "string", "enum": ["info", "warning", "alert"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "storeId", "eventType", "title", "detail", "severity", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Admin role registry (client writes strictly denied)"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private operator profile isolated by UID"
+    },
+    "/stores/{storeId}": {
+      "schema": { "$ref": "#/entities/StoreRealtimeHub" },
+      "description": "Master Gate parent document for each supermarket store"
+    },
+    "/stores/{storeId}/liveDisplays/{counterId}": {
+      "schema": { "$ref": "#/entities/LivePoleDisplay" },
+      "description": "Cross-device real-time Customer Pole Display state per POS lane"
+    },
+    "/stores/{storeId}/opsEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/StoreOpsEvent" },
+      "description": "Real-time Delivery Dispatch, Wastage Alert, and Add-On activity feed"
+    }
+  }
+}
